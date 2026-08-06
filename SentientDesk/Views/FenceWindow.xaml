@@ -1,0 +1,163 @@
+<Window x:Class="SentientDesk.Views.FenceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="clr-namespace:SentientDesk.Models"
+        Title="{Binding Title}"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="False"
+        MinWidth="160"
+        MinHeight="36">
+    <Window.Resources>
+        <Style x:Key="ChromeButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Foreground" Value="#EEF0F4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="RootBorder"
+            Background="{Binding Background}"
+            BorderBrush="#55FFFFFF"
+            BorderThickness="1"
+            CornerRadius="8"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="#33000000"
+                    CornerRadius="8,8,0,0"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
+                    MouseRightButtonUp="TitleBar_MouseRightButtonUp">
+                <DockPanel Margin="10,0,6,0">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource ChromeButton}"
+                                ToolTip="Collapse / expand"
+                                Click="Collapse_Click"
+                                FontSize="12"
+                                Content="▾"/>
+                        <Button Style="{StaticResource ChromeButton}"
+                                ToolTip="Fence menu"
+                                Click="Menu_Click"
+                                FontSize="14"
+                                Content="⋮"/>
+                    </StackPanel>
+                    <TextBox x:Name="TitleEdit"
+                             Visibility="Collapsed"
+                             VerticalAlignment="Center"
+                             Background="#44000000"
+                             Foreground="#F2F5FA"
+                             BorderThickness="0,0,0,1"
+                             BorderBrush="#88FFFFFF"
+                             FontFamily="Segoe UI Semibold"
+                             FontSize="13"
+                             CaretBrush="White"
+                             LostKeyboardFocus="TitleEdit_LostKeyboardFocus"
+                             PreviewKeyDown="TitleEdit_PreviewKeyDown"/>
+                    <TextBlock x:Name="TitleText"
+                               Text="{Binding Title}"
+                               VerticalAlignment="Center"
+                               Foreground="#F2F5FA"
+                               FontFamily="Segoe UI Semibold"
+                               FontSize="13"
+                               TextTrimming="CharacterEllipsis"
+                               MouseLeftButtonDown="TitleText_MouseLeftButtonDown"/>
+                </DockPanel>
+            </Border>
+
+            <ScrollViewer Grid.Row="1"
+                          x:Name="ContentHost"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="8">
+                <ItemsControl x:Name="IconList" ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:DesktopItem}">
+                            <Border Width="88"
+                                    Margin="2"
+                                    Padding="4"
+                                    CornerRadius="4"
+                                    Background="Transparent"
+                                    Cursor="Hand"
+                                    ToolTip="{Binding Path=Path}"
+                                    MouseLeftButtonDown="Icon_MouseLeftButtonDown"
+                                    MouseMove="Icon_MouseMove"
+                                    MouseLeftButtonUp="Icon_MouseLeftButtonUp"
+                                    MouseRightButtonUp="Icon_MouseRightButtonUp"
+                                    MouseLeave="Icon_MouseLeave">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#33FFFFFF"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <Image Source="{Binding Icon}"
+                                           Width="40" Height="40"
+                                           Stretch="Uniform"
+                                           HorizontalAlignment="Center"
+                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                           IsHitTestVisible="False"/>
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               TextAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="36"
+                                               Margin="0,4,0,0"
+                                               FontSize="11"
+                                               Foreground="#F0F3F8"
+                                               FontFamily="Segoe UI"
+                                               IsHitTestVisible="False"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <Thumb Grid.Row="1"
+                   x:Name="ResizeThumb"
+                   Width="18" Height="18"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Bottom"
+                   Cursor="SizeNWSE"
+                   Opacity="0.4"
+                   DragDelta="ResizeThumb_DragDelta"
+                   DragCompleted="ResizeThumb_DragCompleted"
+                   Margin="0,0,2,2"/>
+        </Grid>
+    </Border>
+</Window>
