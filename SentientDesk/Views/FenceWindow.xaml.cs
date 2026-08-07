@@ -43,11 +43,10 @@ public partial class FenceWindow : Window
         _expandedHeight = Math.Max(viewModel.Height, 100);
         _boundsLocked = true;
 
-        // Cap absurd sizes from older corrupt layout files.
-        if (ViewModel.Width > SystemParameters.WorkArea.Width * 0.75)
-            ViewModel.Width = 240;
-        if (ViewModel.Height > SystemParameters.WorkArea.Height * 0.75)
-            ViewModel.Height = 200;
+        // Cap absurd sizes from older corrupt layout files (full virtual desktop).
+        var (w, h) = MonitorPlacement.CapAbsurdSize(ViewModel.Width, ViewModel.Height);
+        ViewModel.Width = w;
+        ViewModel.Height = h;
 
         ApplySavedBounds();
 
@@ -102,8 +101,16 @@ public partial class FenceWindow : Window
 
     public void ApplySavedBounds()
     {
-        Left = ViewModel.Left;
-        Top = ViewModel.Top;
+        var height = ViewModel.IsCollapsed ? 36 : Math.Max(100, ViewModel.Height);
+        var (left, top) = MonitorPlacement.EnsureOnScreen(
+            ViewModel.Left, ViewModel.Top, Math.Max(MinWidth, ViewModel.Width), height);
+
+        // Persist corrected coords so off-screen layouts do not stick forever.
+        ViewModel.Left = left;
+        ViewModel.Top = top;
+
+        Left = left;
+        Top = top;
         LockSizeToViewModel();
         _expandedHeight = ViewModel.Height;
     }

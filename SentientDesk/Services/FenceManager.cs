@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Interop;
+using Microsoft.Win32;
 using SentientDesk.Models;
 using SentientDesk.Native;
 using SentientDesk.ViewModels;
@@ -24,6 +25,7 @@ public sealed class FenceManager : IDisposable
         _hider = hider;
         _layout = store.Load();
         _icons.Changed += OnIconsChanged;
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
 
     public AppLayout Layout => _layout;
@@ -48,14 +50,18 @@ public sealed class FenceManager : IDisposable
 
     public FenceWindow CreateFence(string? title = null, Point? origin = null)
     {
+        const double width = 240;
+        const double height = 200;
+        var place = origin ?? MonitorPlacement.OriginForNewFence(width, height, _windows.Count);
+
         var data = new FenceData
         {
             Id = Guid.NewGuid().ToString("N"),
             Title = title ?? $"Fence {_windows.Count + 1}",
-            Left = origin?.X ?? 80 + (_windows.Count * 28),
-            Top = origin?.Y ?? 80 + (_windows.Count * 28),
-            Width = 240,
-            Height = 200,
+            Left = place.X,
+            Top = place.Y,
+            Width = width,
+            Height = height,
             Color = PickColor(_windows.Count)
         };
 
@@ -234,6 +240,29 @@ public sealed class FenceManager : IDisposable
         _store.Save(_layout);
     }
 
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            if (_disposed)
+                return;
+
+            var moved = false;
+            foreach (var window in _windows)
+            {
+                var beforeLeft = window.ViewModel.Left;
+                var beforeTop = window.ViewModel.Top;
+                window.ApplySavedBounds();
+                if (Math.Abs(beforeLeft - window.ViewModel.Left) > 0.1 ||
+                    Math.Abs(beforeTop - window.ViewModel.Top) > 0.1)
+                    moved = true;
+            }
+
+            if (moved)
+                Persist();
+        });
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -242,6 +271,7 @@ public sealed class FenceManager : IDisposable
             window.StopPersistence();
 
         _icons.Changed -= OnIconsChanged;
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
 
         if (_windows.Count > 0)
         {

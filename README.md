@@ -85,6 +85,7 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 | New-fence hotkey | Ctrl+Shift+F |
 | Auto-update via GitHub Releases | Yes (Velopack) |
 | Layout JSON | `%AppData%\SentientDesk\` |
+| Multi-monitor placement | Virtual-desktop coords; off-screen recovery; new fence on cursor monitor |
 
 ## Usage
 
@@ -129,7 +130,6 @@ Fences organize a view of Desktop folder items; they do not replace your desktop
 
 - Portal / rollup animations
 - Rules that auto-sort new icons by type or name
-- Multi-monitor aware placement
 - Snap-to-grid and fence templates
 - Parent fence chrome to the wallpaper WorkerW layer
 
