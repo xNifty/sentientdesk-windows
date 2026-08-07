@@ -35,6 +35,7 @@ public sealed class FenceManager : IDisposable
         if (_layout.Fences.Count == 0)
             _layout = _store.Load();
 
+        EnsureDefaultFenceId();
         DistributeUnassignedItems();
         CreateWindowsFromLayout();
         _hider.SetHidden(_layout.HideDesktopIcons);
@@ -59,15 +60,29 @@ public sealed class FenceManager : IDisposable
         };
 
         _layout.Fences.Add(data);
+        if (string.IsNullOrWhiteSpace(_layout.DefaultFenceId))
+            _layout.DefaultFenceId = data.Id;
+
         var vm = new FenceViewModel(data);
         var window = AttachWindow(vm);
         Persist();
         return window;
     }
 
+    public void SetDefaultFence(FenceWindow window)
+    {
+        _layout.DefaultFenceId = window.ViewModel.Id;
+        Persist();
+    }
+
+    public bool IsDefaultFence(FenceWindow window) =>
+        !string.IsNullOrWhiteSpace(_layout.DefaultFenceId) &&
+        window.ViewModel.Id.Equals(_layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase);
+
     public void RemoveFence(FenceWindow window)
     {
         var orphanIds = window.ViewModel.Items.Select(i => i.Id).ToList();
+        var removedId = window.ViewModel.Id;
         window.ViewModel.Items.Clear();
 
         _windows.Remove(window);
@@ -76,12 +91,15 @@ public sealed class FenceManager : IDisposable
 
         if (_windows.Count > 0 && orphanIds.Count > 0)
         {
-            var target = _windows[0].ViewModel;
+            var target = ResolveDefaultViewModel() ?? _windows[0].ViewModel;
             foreach (var id in orphanIds)
             {
-                var item = _icons.Items.FirstOrDefault(i => i.Id == id);
+                if (IsHidden(id))
+                    continue;
+
+                var item = _icons.Items.FirstOrDefault(i => i.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
                 if (item is null) continue;
-                if (target.Items.All(x => x.Id != id))
+                if (target.Items.All(x => !x.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
                     target.Items.Add(item);
                 _layout.ItemFenceMap[id] = target.Id;
             }
@@ -92,6 +110,27 @@ public sealed class FenceManager : IDisposable
                 _layout.ItemFenceMap.Remove(id);
         }
 
+        if (removedId.Equals(_layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase))
+            _layout.DefaultFenceId = _windows.Count > 0 ? _windows[0].ViewModel.Id : null;
+
+        Persist();
+    }
+
+    /// <summary>
+    /// Removes an icon from its fence without deleting the on-disk file.
+    /// The item is marked hidden so refresh / new-icon sync will not reassign it.
+    /// </summary>
+    public void RemoveItem(DesktopItem item, FenceViewModel from)
+    {
+        var index = from.Items.IndexOf(item);
+        if (index >= 0)
+            from.Items.RemoveAt(index);
+
+        _layout.ItemFenceMap.Remove(item.Id);
+        MarkHidden(item.Id);
+
+        foreach (var window in _windows)
+            window.LockSizeToViewModel();
         Persist();
     }
 
@@ -99,22 +138,68 @@ public sealed class FenceManager : IDisposable
     {
         var fromIndex = from.Items.IndexOf(item);
         if (fromIndex < 0)
+        {
+            // Allow restoring a dismissed item if it somehow is moved into a fence.
+            if (!ReferenceEquals(from, to) && to.Items.All(x => !x.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                var index = insertIndex ?? to.Items.Count;
+                index = Math.Clamp(index, 0, to.Items.Count);
+                to.Items.Insert(index, item);
+                _layout.ItemFenceMap[item.Id] = to.Id;
+                ClearHidden(item.Id);
+                foreach (var window in _windows)
+                    window.LockSizeToViewModel();
+                Persist();
+            }
             return;
+        }
 
         from.Items.RemoveAt(fromIndex);
 
-        var index = insertIndex ?? to.Items.Count;
-        if (ReferenceEquals(from, to) && index > fromIndex)
-            index--;
-        index = Math.Clamp(index, 0, to.Items.Count);
+        var destIndex = insertIndex ?? to.Items.Count;
+        if (ReferenceEquals(from, to) && destIndex > fromIndex)
+            destIndex--;
+        destIndex = Math.Clamp(destIndex, 0, to.Items.Count);
 
-        to.Items.Insert(index, item);
+        to.Items.Insert(destIndex, item);
         _layout.ItemFenceMap[item.Id] = to.Id;
+        ClearHidden(item.Id);
 
         // Item reflow must not change fence geometry.
         foreach (var window in _windows)
             window.LockSizeToViewModel();
         Persist();
+    }
+
+    public bool TryRenameItem(DesktopItem item, string newBaseName)
+    {
+        var oldId = item.Id;
+        var newPath = ShellFileOps.TryRename(item, newBaseName);
+        if (newPath is null)
+            return false;
+
+        if (newPath.Equals(oldId, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var wasHidden = IsHidden(oldId);
+        var fenceId = _layout.ItemFenceMap.TryGetValue(oldId, out var mapped) ? mapped : null;
+
+        item.Id = newPath;
+        item.Path = newPath;
+        item.DisplayName = ShellFileOps.DisplayNameForPath(newPath, item.IsDirectory);
+        item.Icon = DesktopIconService.GetIcon(newPath, item.IsDirectory);
+
+        _layout.ItemFenceMap.Remove(oldId);
+        if (fenceId is not null)
+            _layout.ItemFenceMap[newPath] = fenceId;
+
+        ClearHidden(oldId);
+        if (wasHidden)
+            MarkHidden(newPath);
+
+        // Keep fence ItemIds lists consistent via Persist rebuild.
+        Persist();
+        return true;
     }
 
     public void SetHideDesktopIcons(bool hide)
@@ -144,6 +229,8 @@ public sealed class FenceManager : IDisposable
         _layout.ItemFenceMap = _windows
             .SelectMany(w => w.ViewModel.Items.Select(i => (i.Id, FenceId: w.ViewModel.Id)))
             .ToDictionary(x => x.Id, x => x.FenceId, StringComparer.OrdinalIgnoreCase);
+        // HiddenItemIds and DefaultFenceId are preserved on _layout as-is.
+        EnsureDefaultFenceId();
         _store.Save(_layout);
     }
 
@@ -162,11 +249,13 @@ public sealed class FenceManager : IDisposable
             _layout.ItemFenceMap = _windows
                 .SelectMany(w => w.ViewModel.Items.Select(i => (i.Id, FenceId: w.ViewModel.Id)))
                 .ToDictionary(x => x.Id, x => x.FenceId, StringComparer.OrdinalIgnoreCase);
+            EnsureDefaultFenceId();
             _store.Save(_layout);
         }
 
         _disposed = true;
         _hider.Restore();
+        DesktopIconHider.ForceShowDesktopIcons();
 
         foreach (var w in _windows.ToList())
             w.Close();
@@ -202,11 +291,15 @@ public sealed class FenceManager : IDisposable
 
     private void CreateWindowsFromLayout()
     {
+        var hidden = HiddenSet();
+
         foreach (var data in _layout.Fences)
         {
             var vm = new FenceViewModel(data);
             foreach (var itemId in data.ItemIds)
             {
+                if (hidden.Contains(itemId))
+                    continue;
                 var item = _icons.Items.FirstOrDefault(i => i.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase));
                 if (item is not null)
                     vm.Items.Add(item);
@@ -215,6 +308,8 @@ public sealed class FenceManager : IDisposable
             foreach (var (itemId, fenceId) in _layout.ItemFenceMap)
             {
                 if (!fenceId.Equals(data.Id, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (hidden.Contains(itemId))
                     continue;
                 if (vm.Items.Any(i => i.Id.Equals(itemId, StringComparison.OrdinalIgnoreCase)))
                     continue;
@@ -250,7 +345,9 @@ public sealed class FenceManager : IDisposable
         if (_layout.Fences.Count == 0)
             return;
 
-        var defaultFence = _layout.Fences[0];
+        EnsureDefaultFenceId();
+        var defaultFence = ResolveDefaultFenceData() ?? _layout.Fences[0];
+        var hidden = HiddenSet();
         var assigned = new HashSet<string>(
             _layout.Fences.SelectMany(f => f.ItemIds)
                 .Concat(_layout.ItemFenceMap.Keys),
@@ -258,6 +355,9 @@ public sealed class FenceManager : IDisposable
 
         foreach (var item in _icons.Items)
         {
+            if (hidden.Contains(item.Id))
+                continue;
+
             if (assigned.Contains(item.Id))
                 continue;
 
@@ -278,6 +378,14 @@ public sealed class FenceManager : IDisposable
                 return;
 
             var known = _icons.Items.ToDictionary(i => i.Id, StringComparer.OrdinalIgnoreCase);
+            var hidden = HiddenSet();
+
+            // Drop dismissals for paths that no longer exist on the desktop.
+            if (_layout.HiddenItemIds is { Count: > 0 })
+            {
+                _layout.HiddenItemIds.RemoveAll(id => !known.ContainsKey(id));
+                hidden = HiddenSet();
+            }
 
             foreach (var window in _windows)
             {
@@ -291,10 +399,13 @@ public sealed class FenceManager : IDisposable
             var placed = _windows.SelectMany(w => w.ViewModel.Items.Select(i => i.Id))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var fallback = _windows[0].ViewModel;
+            var fallback = ResolveDefaultViewModel() ?? _windows[0].ViewModel;
 
             foreach (var item in _icons.Items)
             {
+                if (hidden.Contains(item.Id))
+                    continue;
+
                 if (placed.Contains(item.Id))
                     continue;
 
@@ -314,6 +425,70 @@ public sealed class FenceManager : IDisposable
                 window.LockSizeToViewModel();
             Persist();
         });
+    }
+
+    private void EnsureDefaultFenceId()
+    {
+        if (_layout.Fences.Count == 0)
+        {
+            _layout.DefaultFenceId = null;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_layout.DefaultFenceId) ||
+            _layout.Fences.All(f => !f.Id.Equals(_layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            _layout.DefaultFenceId = _layout.Fences[0].Id;
+        }
+    }
+
+    private FenceData? ResolveDefaultFenceData()
+    {
+        EnsureDefaultFenceId();
+        if (string.IsNullOrWhiteSpace(_layout.DefaultFenceId))
+            return _layout.Fences.FirstOrDefault();
+
+        return _layout.Fences.FirstOrDefault(f =>
+                   f.Id.Equals(_layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase))
+               ?? _layout.Fences.FirstOrDefault();
+    }
+
+    private FenceViewModel? ResolveDefaultViewModel()
+    {
+        EnsureDefaultFenceId();
+        if (_windows.Count == 0)
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(_layout.DefaultFenceId))
+        {
+            var match = _windows.FirstOrDefault(w =>
+                w.ViewModel.Id.Equals(_layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+                return match.ViewModel;
+        }
+
+        return _windows[0].ViewModel;
+    }
+
+    private HashSet<string> HiddenSet() =>
+        new(_layout.HiddenItemIds ?? [], StringComparer.OrdinalIgnoreCase);
+
+    private bool IsHidden(string itemId) =>
+        _layout.HiddenItemIds.Any(id => id.Equals(itemId, StringComparison.OrdinalIgnoreCase));
+
+    private void MarkHidden(string itemId)
+    {
+        _layout.HiddenItemIds ??= [];
+        if (!_layout.HiddenItemIds.Any(id => id.Equals(itemId, StringComparison.OrdinalIgnoreCase)))
+            _layout.HiddenItemIds.Add(itemId);
+    }
+
+    private void ClearHidden(string itemId)
+    {
+        if (_layout.HiddenItemIds is null || _layout.HiddenItemIds.Count == 0)
+            return;
+
+        _layout.HiddenItemIds.RemoveAll(id => id.Equals(itemId, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string PickColor(int index)

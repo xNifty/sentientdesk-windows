@@ -29,10 +29,21 @@ public sealed class DesktopIconHider
 
     public void Restore()
     {
-        if (!_hidden)
-            return;
         SetHidden(false);
         _hidden = false;
+    }
+
+    /// <summary>
+    /// Shows the desktop icon ListView regardless of prior hide state.
+    /// Used on Exit and by <c>--restore-desktop</c> during uninstall.
+    /// </summary>
+    public static void ForceShowDesktopIcons()
+    {
+        var listView = FindDesktopListView();
+        if (listView == IntPtr.Zero)
+            return;
+
+        NativeMethods.ShowWindow(listView, NativeMethods.SW_SHOW);
     }
 
     private static IntPtr FindDesktopListView()

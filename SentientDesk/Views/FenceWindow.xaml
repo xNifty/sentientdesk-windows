@@ -9,6 +9,7 @@
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         ShowActivated="False"
+        Focusable="True"
         Topmost="False"
         MinWidth="160"
         MinHeight="36">

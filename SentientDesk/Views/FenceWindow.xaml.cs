@@ -82,6 +82,7 @@ public partial class FenceWindow : Window
         };
         PreviewMouseMove += Window_PreviewMouseMove;
         PreviewMouseLeftButtonUp += Window_PreviewMouseLeftButtonUp;
+        PreviewKeyDown += Window_PreviewKeyDown;
         Closed += (_, _) =>
         {
             CancelIconDrag();
@@ -436,6 +437,16 @@ public partial class FenceWindow : Window
 
         menu.Items.Add(new Separator());
 
+        var setDefault = new MenuItem
+        {
+            Header = "Set as default for new icons",
+            IsChecked = _manager.IsDefaultFence(this)
+        };
+        setDefault.Click += (_, _) => _manager.SetDefaultFence(this);
+        menu.Items.Add(setDefault);
+
+        menu.Items.Add(new Separator());
+
         var remove = new MenuItem { Header = "Remove fence" };
         remove.Click += (_, _) =>
         {
@@ -542,8 +553,24 @@ public partial class FenceWindow : Window
         {
             _lastClickItem = item;
             _lastClickUtc = now;
+            Focus();
+            Keyboard.Focus(this);
         }
 
+        e.Handled = true;
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Delete || _lastClickItem is null)
+            return;
+
+        if (!ViewModel.Items.Contains(_lastClickItem))
+            return;
+
+        var item = _lastClickItem;
+        _lastClickItem = null;
+        _manager.RemoveItem(item, ViewModel);
         e.Handled = true;
     }
 
@@ -581,6 +608,9 @@ public partial class FenceWindow : Window
     private void ShowIconMenu(DesktopItem item, UIElement placementTarget)
     {
         HoldInteraction();
+        _lastClickItem = item;
+        Focus();
+        Keyboard.Focus(this);
 
         var menu = new ContextMenu
         {
@@ -591,6 +621,37 @@ public partial class FenceWindow : Window
         var open = new MenuItem { Header = "Open" };
         open.Click += (_, _) => DesktopIconService.Launch(item);
         menu.Items.Add(open);
+
+        menu.Items.Add(new Separator());
+
+        var cut = new MenuItem { Header = "Cut" };
+        cut.Click += (_, _) => ShellFileOps.CutToClipboard(item);
+        menu.Items.Add(cut);
+
+        var copy = new MenuItem { Header = "Copy" };
+        copy.Click += (_, _) => ShellFileOps.CopyToClipboard(item);
+        menu.Items.Add(copy);
+
+        menu.Items.Add(new Separator());
+
+        var delete = new MenuItem { Header = "Delete" };
+        delete.Click += (_, _) =>
+        {
+            _lastClickItem = null;
+            _manager.RemoveItem(item, ViewModel);
+        };
+        menu.Items.Add(delete);
+
+        var rename = new MenuItem { Header = "Rename" };
+        rename.Click += (_, _) =>
+            Dispatcher.BeginInvoke(() => BeginItemRename(item), DispatcherPriority.ApplicationIdle);
+        menu.Items.Add(rename);
+
+        var properties = new MenuItem { Header = "Properties" };
+        properties.Click += (_, _) => ShellFileOps.ShowProperties(item);
+        menu.Items.Add(properties);
+
+        menu.Items.Add(new Separator());
 
         var moveRoot = new MenuItem { Header = "Move to" };
         foreach (var fence in _manager.Windows)
@@ -616,5 +677,23 @@ public partial class FenceWindow : Window
         };
 
         menu.IsOpen = true;
+    }
+
+    private void BeginItemRename(DesktopItem item)
+    {
+        HoldInteraction();
+        try
+        {
+            var proposed = RenamePrompt.Ask("Rename", "New name:", item.DisplayName);
+            if (proposed is null)
+                return;
+
+            _manager.TryRenameItem(item, proposed);
+        }
+        finally
+        {
+            ReleaseInteraction();
+            PushBehindApps();
+        }
     }
 }

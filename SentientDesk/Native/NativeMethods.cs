@@ -179,4 +179,34 @@ internal static class NativeMethods
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
+
+    public const uint SEE_MASK_INVOKEIDLIST = 0x0000000C;
+    public const uint SEE_MASK_NOCLOSEPROCESS = 0x00000040;
+    public const uint SEE_MASK_FLAG_DDEWAIT = 0x00000100;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct SHELLEXECUTEINFO
+    {
+        public int cbSize;
+        public uint fMask;
+        public IntPtr hwnd;
+        public string? lpVerb;
+        public string? lpFile;
+        public string? lpParameters;
+        public string? lpDirectory;
+        public int nShow;
+        public IntPtr hInstApp;
+        public IntPtr lpIDList;
+        public string? lpClass;
+        public IntPtr hkeyClass;
+        public uint dwHotKey;
+        public IntPtr hIcon;
+        public IntPtr hProcess;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO lpExecInfo);
+
+    public const int SW_SHOWNORMAL = 1;
 }

@@ -55,6 +55,10 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
+; Restore the native desktop icon ListView before files are removed.
+[UninstallRun]
+Filename: "{app}\{#AppExeName}"; Parameters: "--restore-desktop"; RunOnceId: "RestoreDesktopIcons"; Flags: runhidden waituntilterminated
+
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin

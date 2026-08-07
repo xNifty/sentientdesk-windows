@@ -37,9 +37,7 @@ public sealed class LayoutStore
             if (layout is null)
                 return CreateDefault();
 
-            layout.ItemFenceMap = new Dictionary<string, string>(
-                layout.ItemFenceMap ?? [],
-                StringComparer.OrdinalIgnoreCase);
+            Normalize(layout);
 
             // Empty fences array is a corrupt/torn write from an earlier bug — recover.
             if (layout.Fences is null || layout.Fences.Count == 0)
@@ -70,6 +68,7 @@ public sealed class LayoutStore
             }
         }
 
+        Normalize(layout);
         var json = JsonSerializer.Serialize(layout, JsonOptions);
         var temp = _path + ".tmp";
         File.WriteAllText(temp, json);
@@ -81,15 +80,43 @@ public sealed class LayoutStore
             File.Move(temp, _path);
     }
 
+    private static void Normalize(AppLayout layout)
+    {
+        layout.ItemFenceMap = new Dictionary<string, string>(
+            layout.ItemFenceMap ?? [],
+            StringComparer.OrdinalIgnoreCase);
+
+        layout.HiddenItemIds ??= [];
+        // Deduplicate while preserving order.
+        layout.HiddenItemIds = layout.HiddenItemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (string.IsNullOrWhiteSpace(layout.DefaultFenceId) &&
+            layout.Fences is { Count: > 0 })
+        {
+            layout.DefaultFenceId = layout.Fences[0].Id;
+        }
+        else if (!string.IsNullOrWhiteSpace(layout.DefaultFenceId) &&
+                 layout.Fences is { Count: > 0 } &&
+                 layout.Fences.All(f => !f.Id.Equals(layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase)))
+        {
+            layout.DefaultFenceId = layout.Fences[0].Id;
+        }
+    }
+
     private static AppLayout CreateDefault()
     {
+        var id = Guid.NewGuid().ToString("N");
         return new AppLayout
         {
+            DefaultFenceId = id,
             Fences =
             [
                 new FenceData
                 {
-                    Id = Guid.NewGuid().ToString("N"),
+                    Id = id,
                     Title = "Desktop",
                     Left = 48,
                     Top = 48,

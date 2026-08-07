@@ -85,6 +85,8 @@ public sealed class DesktopIconService
         }
     }
 
+    public static BitmapSource? GetIcon(string path, bool isDirectory) => ExtractIcon(path, isDirectory);
+
     public void Dispose()
     {
         _userWatcher.Dispose();

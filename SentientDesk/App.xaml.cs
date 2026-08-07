@@ -23,6 +23,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        if (e.Args.Any(a => a.Equals("--restore-desktop", StringComparison.OrdinalIgnoreCase)))
+        {
+            DesktopIconHider.ForceShowDesktopIcons();
+            Shutdown();
+            return;
+        }
+
         _singleInstance = new Mutex(true, "SentientDesk.SingleInstance", out var created);
         if (!created)
         {
@@ -114,7 +121,7 @@ public partial class App : Application
 
         var about = new ToolStripMenuItem("About");
         about.Click += (_, _) => MessageBox.Show(
-            "SentientDesk 0.1.0\n\nA free, open desktop organizer inspired by that other desktop organizer.\nIcons are grouped into movable fences. Layout is saved to AppData.\n\nHotkey: Ctrl+Shift+F — new fence",
+            "SentientDesk 0.1.0\n\nA free, open desktop organizer inspired by that other desktop organizer.\nFences overlay your Desktop folder — Exit restores normal desktop icons.\n\nHotkey: Ctrl+Shift+F — new fence",
             "About SentientDesk",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

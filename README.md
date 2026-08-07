@@ -34,7 +34,7 @@ Creates an unsigned Setup.exe. The wizard defaults to `C:\Program Files\Sentient
 
 Output: `artifacts\installer\SentientDesk-Setup-<version>.exe`
 
-Windows SmartScreen will warn on unsigned hobby builds — that is expected. Layout data under `%AppData%\SentientDesk` is left in place on uninstall.
+Windows SmartScreen will warn on unsigned hobby builds — that is expected. Layout data under `%AppData%\SentientDesk` is left in place on uninstall. Uninstall runs `SentientDesk.exe --restore-desktop` so the native desktop icon ListView is shown again.
 
 ## Notes
 
@@ -47,10 +47,12 @@ Windows SmartScreen will warn on unsigned hobby builds — that is expected. Lay
 | Feature | Support |
 |---------|---------|
 | Movable / resizable / collapsible / recolorable fences | Yes |
-| Desktop icons inside fences | User + Public Desktop |
+| Desktop icons inside fences | User + Public Desktop (first-launch import; overlay thereafter) |
 | Drag icons between fences | Yes |
 | Double-click icon to open | Yes |
-| Hide native desktop icons | Explorer ListView |
+| Icon context menu | Open, Cut/Copy, Delete (remove from fence), Rename, Properties, Move to |
+| Default fence for new icons | Right-click fence title → Set as default |
+| Hide native desktop icons | Explorer ListView (restored on Exit / uninstall) |
 | Start at login | HKCU Run |
 | New-fence hotkey | Ctrl+Shift+F |
 | Layout JSON | `%AppData%\SentientDesk\` |
@@ -74,7 +76,13 @@ Windows SmartScreen will warn on unsigned hobby builds — that is expected. Lay
 - Drag the bottom-right grip to resize
 - Double-click the title bar to collapse/expand
 - Double-click the title text to rename
-- Right-click the title bar for color / remove
+- Right-click the title bar for color / default fence / remove
+- Right-click an icon for Open, Cut/Copy, Delete (from fence), Rename, Properties, Move to
+- Delete key removes the selected icon from the fence (file stays on disk)
+
+### Overlay model
+
+Fences organize a view of Desktop folder items; they do not replace your desktop files. The first launch imports current desktop icons into fences. New files that appear on the Desktop go to the default fence. Removing an icon from a fence only hides it from the organizer — Exit or uninstall shows the normal desktop icons again.
 
 ## Architecture
 
