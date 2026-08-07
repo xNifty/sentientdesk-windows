@@ -2,13 +2,13 @@
 
 A free, open-source desktop icon organizer for Windows, inspired by that other desktop organizer. Group desktop shortcuts into movable, resizable, collapsible fences you control and can extend.
 
-**Stack:** WPF / .NET 8 · Windows 10/11
+**Stack:** WPF / .NET 8 · Windows 10/11 · Velopack updates via GitHub Releases
 
 ## Requirements
 
 - Windows 10 or 11
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) to build
-- [Inno Setup 6](https://jrsoftware.org/isdl.php) to build the installer (optional for day-to-day `dotnet run`)
+- [Velopack CLI (`vpk`)](https://docs.velopack.io/) to pack releases locally (`dotnet tool install -g vpk`) — optional for day-to-day `dotnet run`
 
 ## Build & run
 
@@ -23,18 +23,37 @@ The app runs from the **system tray** (no main window). Double-click the tray ic
 
 Layout is saved to `%AppData%\SentientDesk\layout.json`.
 
-## Installer (optional)
+## Installer & updates
 
-Creates an unsigned Setup.exe. The wizard defaults to `C:\Program Files\SentientDesk` (`{autopf}`) and still lets the user pick any folder. Installing to Program Files requires elevation. The publish is **self-contained win-x64**, so end users do not need the .NET runtime.
+The app is packaged with [Velopack](https://velopack.io/). The installer is per-user (`%LocalAppData%\SentientDesk`) and does not require elevation. Auto-updates check [GitHub Releases](https://github.com/xNifty/sentientdesk-windows/releases) for new packages.
+
+The publish is **self-contained win-x64**, so end users do not need the .NET runtime.
+
+### Local pack
 
 ```powershell
-.\scripts\New-Installer.ps1
-# optional: .\scripts\New-Installer.ps1 -Version 0.1.1
+.\scripts\New-Release.ps1
+# optional: .\scripts\New-Release.ps1 -Version 0.1.1
+# optional: .\scripts\New-Release.ps1 -Upload   # needs GITHUB_TOKEN or gh auth
 ```
 
-Output: `artifacts\installer\SentientDesk-Setup-<version>.exe`
+Output: `artifacts\releases\` (Setup.exe, nupkg, release metadata).
 
-Windows SmartScreen will warn on unsigned hobby builds — that is expected. Layout data under `%AppData%\SentientDesk` is left in place on uninstall. Uninstall runs `SentientDesk.exe --restore-desktop` so the native desktop icon ListView is shown again.
+### Publish a release (CI)
+
+1. Bump `<Version>` in `SentientDesk/SentientDesk.csproj` if you want local builds to match.
+2. Commit, then create and push a version tag:
+
+```powershell
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The [Release](.github/workflows/release.yml) workflow publishes a GitHub Release with Velopack assets. Installed clients pick up the update via **Check for updates…** (also checked quietly on startup).
+
+Windows SmartScreen will warn on unsigned hobby builds — that is expected. Layout data under `%AppData%\SentientDesk` is left in place on uninstall. Uninstall restores the native desktop icon ListView and clears the “Start with Windows” Run entry.
+
+If you previously installed via the old Inno Setup build (Program Files), uninstall it once and install from the new Velopack Setup.exe.
 
 ## Notes
 
@@ -55,6 +74,7 @@ Windows SmartScreen will warn on unsigned hobby builds — that is expected. Lay
 | Hide native desktop icons | Explorer ListView (restored on Exit / uninstall) |
 | Start at login | HKCU Run |
 | New-fence hotkey | Ctrl+Shift+F |
+| Auto-update via GitHub Releases | Yes (Velopack) |
 | Layout JSON | `%AppData%\SentientDesk\` |
 
 ## Usage
@@ -68,6 +88,7 @@ Windows SmartScreen will warn on unsigned hobby builds — that is expected. Lay
 | Start with Windows | Launch at login |
 | Refresh icons | Rescans Desktop folders |
 | Open layout folder | Opens the settings folder |
+| Check for updates… | Checks GitHub Releases for a newer build |
 | Exit | Restores desktop icons and quits |
 
 ### Fence tips
@@ -91,6 +112,7 @@ Fences organize a view of Desktop folder items; they do not replace your desktop
 | `Services/FenceManager` | Owns fence windows and persistence |
 | `Services/DesktopIconService` | Enumerates Desktop folders + icons |
 | `Services/DesktopIconHider` | Shows/hides the shell desktop ListView |
+| `Services/UpdateService` | Velopack + GitHub Releases update checks |
 | `Views/FenceWindow` | WPF overlay UI per fence |
 | `Models` / `LayoutStore` | JSON layout under AppData |
 

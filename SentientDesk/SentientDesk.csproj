@@ -12,10 +12,12 @@
     <Version>0.1.0</Version>
     <Product>SentientDesk</Product>
     <Description>Free desktop icon organizer for Windows — group desktop icons into movable fences you can own and extend.</Description>
+    <StartupObject>SentientDesk.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Drawing.Common" Version="8.0.11" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <!-- Avoid WinForms/Drawing types polluting WPF global usings -->

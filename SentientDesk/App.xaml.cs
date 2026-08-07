@@ -1,7 +1,9 @@
 ﻿using System.Drawing;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Forms;
 using SentientDesk.Services;
+using Velopack;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
@@ -17,7 +19,9 @@ public partial class App : Application
     private DesktopIconHider? _hider;
     private LayoutStore? _store;
     private HotkeyService? _hotkeys;
+    private UpdateService? _updates;
     private Mutex? _singleInstance;
+    private bool _updateCheckInProgress;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -55,7 +59,9 @@ public partial class App : Application
         _hotkeys = new HotkeyService();
         _hotkeys.HotkeyPressed += () => Dispatcher.BeginInvoke(() => _manager?.CreateFence());
 
+        _updates = new UpdateService();
         CreateTrayIcon();
+        _ = CheckForUpdatesOnStartupAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -119,9 +125,13 @@ public partial class App : Application
         };
         menu.Items.Add(openLayout);
 
+        var checkUpdates = new ToolStripMenuItem("Check for updates…");
+        checkUpdates.Click += async (_, _) => await CheckForUpdatesManualAsync();
+        menu.Items.Add(checkUpdates);
+
         var about = new ToolStripMenuItem("About");
         about.Click += (_, _) => MessageBox.Show(
-            "SentientDesk 0.1.0\n\nA free, open desktop organizer inspired by that other desktop organizer.\nFences overlay your Desktop folder — Exit restores normal desktop icons.\n\nHotkey: Ctrl+Shift+F — new fence",
+            $"SentientDesk {GetAppVersion()}\n\nA free, open desktop organizer inspired by that other desktop organizer.\nFences overlay your Desktop folder — Exit restores normal desktop icons.\n\nHotkey: Ctrl+Shift+F — new fence",
             "About SentientDesk",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
@@ -145,6 +155,122 @@ public partial class App : Application
         };
 
         _tray.DoubleClick += (_, _) => _manager?.CreateFence();
+    }
+
+    private async Task CheckForUpdatesOnStartupAsync()
+    {
+        if (_updates is null || !_updates.IsInstalled)
+            return;
+
+        try
+        {
+            var update = await _updates.CheckForUpdatesAsync();
+            if (update is null)
+                return;
+
+            await Dispatcher.InvokeAsync(() => PromptAndApplyUpdate(update, silentIfDeclined: true));
+        }
+        catch
+        {
+            // Background check should never interrupt normal use.
+        }
+    }
+
+    private async Task CheckForUpdatesManualAsync()
+    {
+        if (_updateCheckInProgress)
+            return;
+
+        if (_updates is null || !_updates.IsInstalled)
+        {
+            MessageBox.Show(
+                "Updates are only available when SentientDesk is installed via the official installer.",
+                "SentientDesk",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        _updateCheckInProgress = true;
+        try
+        {
+            var update = await _updates.CheckForUpdatesAsync();
+            if (update is null)
+            {
+                MessageBox.Show(
+                    $"You're up to date ({GetAppVersion()}).",
+                    "SentientDesk",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            await PromptAndApplyUpdate(update, silentIfDeclined: false);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Could not check for updates:\n{ex.Message}",
+                "SentientDesk",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _updateCheckInProgress = false;
+        }
+    }
+
+    private async Task PromptAndApplyUpdate(UpdateInfo update, bool silentIfDeclined)
+    {
+        if (_updates is null)
+            return;
+
+        var version = update.TargetFullRelease.Version.ToString();
+        var result = MessageBox.Show(
+            $"SentientDesk {version} is available.\n\nDownload and install now? The app will restart.",
+            "Update available",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            if (!silentIfDeclined && _tray is not null)
+            {
+                _tray.ShowBalloonTip(
+                    4000,
+                    "Update available",
+                    $"SentientDesk {version} is ready when you are — use Check for updates…",
+                    ToolTipIcon.Info);
+            }
+            return;
+        }
+
+        try
+        {
+            if (_tray is not null)
+            {
+                _tray.ShowBalloonTip(3000, "Updating", "Downloading update…", ToolTipIcon.Info);
+            }
+
+            await _updates.DownloadAndApplyAsync(update);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Update failed:\n{ex.Message}",
+                "SentientDesk",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private static string GetAppVersion()
+    {
+        var version = Assembly.GetExecutingAssembly().GetName().Version;
+        if (version is null)
+            return "0.0.0";
+        return $"{version.Major}.{version.Minor}.{version.Build}";
     }
 
     private static Bitmap CreateTrayBitmap()
