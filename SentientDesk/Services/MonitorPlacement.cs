@@ -69,6 +69,25 @@ internal static class MonitorPlacement
         return new Point(left, top);
     }
 
+    /// <summary>
+    /// Work-area top-left for the monitor containing <paramref name="point"/>
+    /// (virtual-desktop coordinates). Falls back to primary.
+    /// </summary>
+    public static Point WorkAreaOriginForPoint(Point point)
+    {
+        var work = WorkAreaContaining(point) ?? PrimaryWorkArea();
+        return new Point(work.Left, work.Top);
+    }
+
+    /// <summary>
+    /// All monitor work areas in virtual-desktop coordinates (for grid overlay drawing).
+    /// </summary>
+    public static IEnumerable<Rect> AllWorkAreas()
+    {
+        foreach (var screen in WinForms.Screen.AllScreens)
+            yield return ToRect(screen.WorkingArea);
+    }
+
     private static bool IntersectsAnyWorkArea(Rect fence, double minVisible)
     {
         foreach (var screen in WinForms.Screen.AllScreens)
@@ -135,9 +154,14 @@ internal static class MonitorPlacement
         if (!NativeMethods.GetCursorPos(out var pt))
             return null;
 
+        return WorkAreaContaining(new Point(pt.X, pt.Y));
+    }
+
+    private static Rect? WorkAreaContaining(Point point)
+    {
         foreach (var screen in WinForms.Screen.AllScreens)
         {
-            if (screen.Bounds.Contains(pt.X, pt.Y))
+            if (screen.Bounds.Contains((int)point.X, (int)point.Y))
                 return ToRect(screen.WorkingArea);
         }
 

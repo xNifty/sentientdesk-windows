@@ -16,6 +16,7 @@ public sealed class FenceManager : IDisposable
     private readonly DesktopLayerService _desktopLayer = new();
     private readonly List<FenceWindow> _windows = [];
     private AppLayout _layout;
+    private GridOverlayWindow? _gridOverlay;
     private bool _disposed;
 
     public FenceManager(LayoutStore store, DesktopIconService icons, DesktopIconHider hider)
@@ -48,16 +49,25 @@ public sealed class FenceManager : IDisposable
         Persist();
     }
 
-    public FenceWindow CreateFence(string? title = null, Point? origin = null)
+    public FenceWindow CreateFence(string? title = null, Point? origin = null) =>
+        CreateFence(FenceTemplate.Blank, origin, title);
+
+    public FenceWindow CreateFence(FenceTemplate template, Point? origin = null, string? titleOverride = null)
     {
-        const double width = 240;
-        const double height = 200;
+        var width = template.Width;
+        var height = template.Height;
         var place = origin ?? MonitorPlacement.OriginForNewFence(width, height, _windows.Count);
+
+        if (_layout.SnapToGrid)
+        {
+            var workOrigin = MonitorPlacement.WorkAreaOriginForPoint(place);
+            place = SnapMath.SnapPoint(place.X, place.Y, workOrigin);
+        }
 
         var data = new FenceData
         {
             Id = Guid.NewGuid().ToString("N"),
-            Title = title ?? $"Fence {_windows.Count + 1}",
+            Title = titleOverride ?? template.Title ?? $"Fence {_windows.Count + 1}",
             Left = place.X,
             Top = place.Y,
             Width = width,
@@ -222,6 +232,35 @@ public sealed class FenceManager : IDisposable
         Persist();
     }
 
+    public void SetSnapToGrid(bool enabled)
+    {
+        _layout.SnapToGrid = enabled;
+        if (!enabled)
+            HideGridOverlay();
+        Persist();
+    }
+
+    /// <summary>
+    /// Show the snap grid overlay while a fence is being moved or resized (snap must be on).
+    /// </summary>
+    public void ShowGridOverlay()
+    {
+        if (_disposed || !_layout.SnapToGrid)
+            return;
+
+        EnsureGridOverlay();
+        _gridOverlay!.FitVirtualScreen();
+        if (!_gridOverlay.IsVisible)
+            _gridOverlay.Show();
+    }
+
+    public void HideGridOverlay()
+    {
+        if (_gridOverlay is null)
+            return;
+        _gridOverlay.Hide();
+    }
+
     public void Persist()
     {
         if (_disposed)
@@ -260,6 +299,9 @@ public sealed class FenceManager : IDisposable
 
             if (moved)
                 Persist();
+
+            if (_gridOverlay is not null && _gridOverlay.IsVisible)
+                _gridOverlay.FitVirtualScreen();
         });
     }
 
@@ -286,6 +328,15 @@ public sealed class FenceManager : IDisposable
         _disposed = true;
         _hider.Restore();
         DesktopIconHider.ForceShowDesktopIcons();
+
+        if (_gridOverlay is not null)
+        {
+            var overlayHwnd = new WindowInteropHelper(_gridOverlay).Handle;
+            if (overlayHwnd != IntPtr.Zero)
+                _desktopLayer.Unregister(overlayHwnd);
+            _gridOverlay.Close();
+            _gridOverlay = null;
+        }
 
         foreach (var w in _windows.ToList())
             w.Close();
@@ -368,6 +419,21 @@ public sealed class FenceManager : IDisposable
         _windows.Add(window);
         window.Show();
         return window;
+    }
+
+    private void EnsureGridOverlay()
+    {
+        if (_gridOverlay is not null)
+            return;
+
+        _gridOverlay = new GridOverlayWindow();
+        _gridOverlay.SourceInitialized += (_, _) =>
+        {
+            if (_disposed || _gridOverlay is null)
+                return;
+            var hwnd = new WindowInteropHelper(_gridOverlay).Handle;
+            _desktopLayer.RegisterClickThrough(hwnd);
+        };
     }
 
     private void DistributeUnassignedItems()

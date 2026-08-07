@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Forms;
+using SentientDesk.Models;
 using SentientDesk.Services;
 using Velopack;
 using Application = System.Windows.Application;
@@ -57,7 +58,7 @@ public partial class App : Application
         _manager.Start();
 
         _hotkeys = new HotkeyService();
-        _hotkeys.HotkeyPressed += () => Dispatcher.BeginInvoke(() => _manager?.CreateFence());
+        _hotkeys.HotkeyPressed += () => Dispatcher.BeginInvoke(() => _manager?.CreateFence(FenceTemplate.Blank));
 
         _updates = new UpdateService();
         CreateTrayIcon();
@@ -84,8 +85,17 @@ public partial class App : Application
     {
         var menu = new ContextMenuStrip();
 
-        var newFence = new ToolStripMenuItem("New fence\tCtrl+Shift+F");
-        newFence.Click += (_, _) => _manager?.CreateFence();
+        var newFence = new ToolStripMenuItem("New fence");
+        foreach (var template in FenceTemplate.All)
+        {
+            var label = template.Id == FenceTemplate.Blank.Id
+                ? $"{template.MenuLabel}\tCtrl+Shift+F"
+                : template.MenuLabel;
+            var item = new ToolStripMenuItem(label);
+            var captured = template;
+            item.Click += (_, _) => _manager?.CreateFence(captured);
+            newFence.DropDownItems.Add(item);
+        }
         menu.Items.Add(newFence);
 
         menu.Items.Add(new ToolStripSeparator());
@@ -97,6 +107,14 @@ public partial class App : Application
         };
         hideIcons.CheckedChanged += (_, _) => _manager?.SetHideDesktopIcons(hideIcons.Checked);
         menu.Items.Add(hideIcons);
+
+        var snapToGrid = new ToolStripMenuItem("Snap to grid")
+        {
+            Checked = _manager?.Layout.SnapToGrid ?? true,
+            CheckOnClick = true
+        };
+        snapToGrid.CheckedChanged += (_, _) => _manager?.SetSnapToGrid(snapToGrid.Checked);
+        menu.Items.Add(snapToGrid);
 
         var startWithWindows = new ToolStripMenuItem("Start with Windows")
         {
@@ -131,7 +149,7 @@ public partial class App : Application
 
         var about = new ToolStripMenuItem("About");
         about.Click += (_, _) => MessageBox.Show(
-            $"SentientDesk {GetAppVersion()}\n\nA free, open desktop organizer inspired by that other desktop organizer.\nFences overlay your Desktop folder — Exit restores normal desktop icons.\n\nHotkey: Ctrl+Shift+F — new fence",
+            $"SentientDesk {GetAppVersion()}\n\nA free, open desktop organizer inspired by that other desktop organizer.\nFences overlay your Desktop folder — Exit restores normal desktop icons.\n\nHotkey: Ctrl+Shift+F — new blank fence\nHold Alt while dragging to bypass snap-to-grid",
             "About SentientDesk",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
@@ -154,7 +172,7 @@ public partial class App : Application
             ContextMenuStrip = menu
         };
 
-        _tray.DoubleClick += (_, _) => _manager?.CreateFence();
+        _tray.DoubleClick += (_, _) => _manager?.CreateFence(FenceTemplate.Blank);
     }
 
     private async Task CheckForUpdatesOnStartupAsync()

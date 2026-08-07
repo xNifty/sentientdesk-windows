@@ -19,6 +19,11 @@ public sealed class AppLayout
 
     public bool HideDesktopIcons { get; set; } = true;
     public bool StartWithWindows { get; set; }
+
+    /// <summary>
+    /// When true, fence move/resize quantizes to a 16px grid (hold Alt to bypass).
+    /// </summary>
+    public bool SnapToGrid { get; set; } = true;
 }
 
 public sealed class FenceData

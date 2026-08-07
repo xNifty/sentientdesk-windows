@@ -54,6 +54,26 @@ public sealed class DesktopLayerService : IDisposable
             Sink(hwnd);
     }
 
+    /// <summary>
+    /// Register a click-through overlay (grid) with the same desktop layering as fences.
+    /// </summary>
+    public void RegisterClickThrough(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || _disposed)
+            return;
+
+        lock (_gate)
+            _fences.Add(hwnd);
+
+        ApplyBaseStyles(hwnd);
+        var ex = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+        ex |= NativeMethods.WS_EX_TRANSPARENT;
+        NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, ex);
+
+        if (!IsInteracting)
+            Sink(hwnd);
+    }
+
     public void Unregister(IntPtr hwnd)
     {
         lock (_gate)

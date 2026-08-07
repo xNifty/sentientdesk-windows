@@ -28,8 +28,13 @@ public partial class FenceWindow : Window
     private bool _persistenceStopped;
     private bool _boundsLocked; // when true, ignore shell/layout size chatter
     private bool _isMovingFence;
+    private bool _isResizingFence;
+    private bool _gestureHasMoved;
+    private bool _gridOverlayShown;
+    private double _resizeDragDistance;
     private Point _moveStartCursor;
     private Point _moveStartOrigin;
+    private const double GridOverlayMoveThresholdPx = 4;
 
     public FenceViewModel ViewModel { get; }
 
@@ -85,6 +90,10 @@ public partial class FenceWindow : Window
         Closed += (_, _) =>
         {
             CancelIconDrag();
+            _isMovingFence = false;
+            _isResizingFence = false;
+            _gestureHasMoved = false;
+            HideGridOverlayIfShown();
             ReleaseInteraction();
         };
     }
@@ -225,6 +234,7 @@ public partial class FenceWindow : Window
 
         // Manual move — DragMove() can alter transparent window size on some DPI setups.
         _isMovingFence = true;
+        _gestureHasMoved = false;
         _moveStartCursor = PointToScreen(e.GetPosition(this));
         _moveStartOrigin = new Point(Left, Top);
         HoldInteraction();
@@ -240,8 +250,12 @@ public partial class FenceWindow : Window
             return;
 
         var cursor = PointToScreen(e.GetPosition(this));
-        Left = _moveStartOrigin.X + (cursor.X - _moveStartCursor.X);
-        Top = _moveStartOrigin.Y + (cursor.Y - _moveStartCursor.Y);
+        var dx = cursor.X - _moveStartCursor.X;
+        var dy = cursor.Y - _moveStartCursor.Y;
+        Left = _moveStartOrigin.X + dx;
+        Top = _moveStartOrigin.Y + dy;
+        ApplyMoveSnap();
+        MaybeArmGridOverlay(Math.Abs(dx) + Math.Abs(dy));
         LockSizeToViewModel();
         e.Handled = true;
     }
@@ -252,11 +266,14 @@ public partial class FenceWindow : Window
             return;
 
         _isMovingFence = false;
+        _gestureHasMoved = false;
         ReleaseMouseCapture();
         PreviewMouseMove -= FenceMove_PreviewMouseMove;
         PreviewMouseLeftButtonUp -= FenceMove_PreviewMouseLeftButtonUp;
+        ApplyMoveSnap();
         CommitUserBounds(includeSize: false);
         LockSizeToViewModel();
+        HideGridOverlayIfShown();
         ReleaseInteraction();
         PushBehindApps();
         e.Handled = true;
@@ -377,12 +394,23 @@ public partial class FenceWindow : Window
         }
     }
 
+    private void ResizeThumb_DragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (ViewModel.IsCollapsed || _boundsLocked) return;
+        _isResizingFence = true;
+        _gestureHasMoved = false;
+        _resizeDragDistance = 0;
+    }
+
     private void ResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
     {
         if (ViewModel.IsCollapsed || _boundsLocked) return;
 
         Width = Math.Max(MinWidth, Width + e.HorizontalChange);
         Height = Math.Max(100, Height + e.VerticalChange);
+        ApplyResizeSnap();
+        _resizeDragDistance += Math.Abs(e.HorizontalChange) + Math.Abs(e.VerticalChange);
+        MaybeArmGridOverlay(_resizeDragDistance);
         ViewModel.Width = Width;
         ViewModel.Height = Height;
         _expandedHeight = Height;
@@ -391,8 +419,78 @@ public partial class FenceWindow : Window
     private void ResizeThumb_DragCompleted(object sender, DragCompletedEventArgs e)
     {
         if (ViewModel.IsCollapsed || _boundsLocked) return;
+        _isResizingFence = false;
+        _gestureHasMoved = false;
+        _resizeDragDistance = 0;
+        ApplyResizeSnap();
+        ViewModel.Width = Width;
+        ViewModel.Height = Height;
+        _expandedHeight = Height;
         CommitUserBounds(includeSize: true);
+        HideGridOverlayIfShown();
         _manager.Persist();
+    }
+
+    private bool IsSnapActive =>
+        _manager.Layout.SnapToGrid && (Keyboard.Modifiers & ModifierKeys.Alt) == 0;
+
+    private void MaybeArmGridOverlay(double travelPx)
+    {
+        if (!_gestureHasMoved)
+        {
+            if (travelPx < GridOverlayMoveThresholdPx)
+                return;
+            _gestureHasMoved = true;
+        }
+
+        UpdateGridOverlayForGesture();
+    }
+
+    private void UpdateGridOverlayForGesture()
+    {
+        var shouldShow = _gestureHasMoved && IsSnapActive && (_isMovingFence || _isResizingFence);
+        if (shouldShow == _gridOverlayShown)
+            return;
+
+        if (shouldShow)
+        {
+            _manager.ShowGridOverlay();
+            _gridOverlayShown = true;
+        }
+        else
+        {
+            HideGridOverlayIfShown();
+        }
+    }
+
+    private void HideGridOverlayIfShown()
+    {
+        if (!_gridOverlayShown)
+            return;
+        _manager.HideGridOverlay();
+        _gridOverlayShown = false;
+    }
+
+    private void ApplyMoveSnap()
+    {
+        if (!IsSnapActive)
+            return;
+
+        var workOrigin = MonitorPlacement.WorkAreaOriginForPoint(new Point(Left, Top));
+        var snapped = SnapMath.SnapPoint(Left, Top, workOrigin);
+        Left = snapped.X;
+        Top = snapped.Y;
+    }
+
+    private void ApplyResizeSnap()
+    {
+        if (!IsSnapActive)
+            return;
+
+        var workOrigin = MonitorPlacement.WorkAreaOriginForPoint(new Point(Left, Top));
+        var size = SnapMath.SnapSize(Left, Top, Width, Height, workOrigin, MinWidth, 100);
+        Width = size.Width;
+        Height = size.Height;
     }
 
     private void ShowFenceMenu(UIElement placementTarget)

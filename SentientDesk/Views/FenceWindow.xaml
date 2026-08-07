@@ -156,6 +156,7 @@
                    VerticalAlignment="Bottom"
                    Cursor="SizeNWSE"
                    Opacity="0.4"
+                   DragStarted="ResizeThumb_DragStarted"
                    DragDelta="ResizeThumb_DragDelta"
                    DragCompleted="ResizeThumb_DragCompleted"
                    Margin="0,0,2,2"/>

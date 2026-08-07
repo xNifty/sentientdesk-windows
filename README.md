@@ -83,6 +83,8 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 | Hide native desktop icons | Explorer ListView (restored on Exit / uninstall) |
 | Start at login | HKCU Run |
 | New-fence hotkey | Ctrl+Shift+F |
+| Snap-to-grid | Yes (16px; tray toggle; hold Alt to bypass; grid overlay while dragging) |
+| Fence templates | Blank / Narrow column / Wide shelf / Large (tray submenu) |
 | Auto-update via GitHub Releases | Yes (Velopack) |
 | Layout JSON | `%AppData%\SentientDesk\` |
 | Multi-monitor placement | Virtual-desktop coords; off-screen recovery; new fence on cursor monitor |
@@ -93,8 +95,9 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 
 | Action | Description |
 |--------|-------------|
-| New fence | Creates an empty fence |
+| New fence | Submenu of templates (Blank matches the hotkey) |
 | Hide desktop icons | Toggles native desktop icons |
+| Snap to grid | Quantize fence move/resize to a 16px grid (off = free placement) |
 | Start with Windows | Launch at login |
 | Refresh icons | Rescans Desktop folders |
 | Open layout folder | Opens the settings folder |
@@ -105,6 +108,7 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 
 - Drag the title bar to move
 - Drag the bottom-right grip to resize
+- With **Snap to grid** on, fences align to a 16px grid; a faint overlay appears while dragging. Hold **Alt** to place freely for that gesture
 - Double-click the title bar to collapse/expand
 - Double-click the title text to rename
 - Right-click the title bar for color / default fence / remove
@@ -124,13 +128,13 @@ Fences organize a view of Desktop folder items; they do not replace your desktop
 | `Services/DesktopIconHider` | Shows/hides the shell desktop ListView |
 | `Services/UpdateService` | Velopack + GitHub Releases update checks |
 | `Views/FenceWindow` | WPF overlay UI per fence |
+| `Views/GridOverlayWindow` | Snap-grid overlay during move/resize |
 | `Models` / `LayoutStore` | JSON layout under AppData |
 
 ## Roadmap ideas
 
 - Portal / rollup animations
 - Rules that auto-sort new icons by type or name
-- Snap-to-grid and fence templates
 - Parent fence chrome to the wallpaper WorkerW layer
 
 ## Related
