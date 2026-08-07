@@ -25,9 +25,18 @@ Layout is saved to `%AppData%\SentientDesk\layout.json`.
 
 ## Installer & updates
 
-The app is packaged with [Velopack](https://velopack.io/). The installer is per-user (`%LocalAppData%\SentientDesk`) and does not require elevation. Auto-updates check [GitHub Releases](https://github.com/xNifty/sentientdesk-windows/releases) for new packages.
+The app is packaged with [Velopack](https://velopack.io/). Auto-updates check [GitHub Releases](https://github.com/xNifty/sentientdesk-windows/releases) for new packages.
 
 The publish is **self-contained win-x64**, so end users do not need the .NET runtime.
+
+### Which installer to use
+
+| Asset | Behavior |
+|-------|----------|
+| **`.msi` (recommended)** | Wizard: choose per-user (`%LocalAppData%`) or Program Files / a custom folder. Finish screen has a **Launch SentientDesk** checkbox (checked by default; uncheck to skip). |
+| **`Setup.exe`** | One-click install to `%LocalAppData%\SentientDesk` and launches immediately (no folder picker). |
+
+Auto-updates work the same for both install methods.
 
 ### Local pack
 
@@ -37,7 +46,7 @@ The publish is **self-contained win-x64**, so end users do not need the .NET run
 # optional: .\scripts\New-Release.ps1 -Upload   # needs GITHUB_TOKEN or gh auth
 ```
 
-Output: `artifacts\releases\` (Setup.exe, nupkg, release metadata).
+Output: `artifacts\releases\` (`.msi`, Setup.exe, nupkg, release metadata).
 
 ### Publish a release (CI)
 
@@ -49,11 +58,11 @@ git tag v0.1.1
 git push origin v0.1.1
 ```
 
-The [Release](.github/workflows/release.yml) workflow publishes a GitHub Release with Velopack assets. Installed clients pick up the update via **Check for updates…** (also checked quietly on startup).
+The [Release](.github/workflows/release.yml) workflow publishes a GitHub Release with Velopack assets (including the MSI). Installed clients pick up the update via **Check for updates…** (also checked quietly on startup).
 
 Windows SmartScreen will warn on unsigned hobby builds — that is expected. Layout data under `%AppData%\SentientDesk` is left in place on uninstall. Uninstall restores the native desktop icon ListView and clears the “Start with Windows” Run entry.
 
-If you previously installed via the old Inno Setup build (Program Files), uninstall it once and install from the new Velopack Setup.exe.
+If you previously installed via the old Inno Setup build (Program Files), uninstall it once and install from the Velopack **`.msi`**.
 
 ## Notes
 

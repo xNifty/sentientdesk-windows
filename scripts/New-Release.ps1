@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Requires .NET 8 SDK and the Velopack CLI (vpk). Installs vpk globally if missing.
-  Output: artifacts\releases\ (Setup.exe, nupkg, releases.*.json, etc.)
+  Output: artifacts\releases\ (Setup.exe, .msi, nupkg, releases.*.json, etc.)
 
 .EXAMPLE
   .\scripts\New-Release.ps1
@@ -100,13 +100,22 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "No prior release assets (or download failed); packing a full release only." -ForegroundColor DarkYellow
 }
 
-Write-Host "==> Packing Velopack release $Version" -ForegroundColor Cyan
+$conclusion = Join-Path $repoRoot "installer\conclusion.md"
+if (-not (Test-Path $conclusion)) {
+    throw "MSI conclusion text not found: $conclusion"
+}
+
+Write-Host "==> Packing Velopack release $Version (Setup.exe + MSI)" -ForegroundColor Cyan
 & vpk pack `
     --packId SentientDesk `
     --packVersion $Version `
     --packDir $publishDir `
     --mainExe SentientDesk.exe `
     --packTitle SentientDesk `
+    --packAuthors SentientDesk `
+    --msi `
+    --instLocation Either `
+    --instConclusion $conclusion `
     --outputDir $releasesDir
 
 if ($LASTEXITCODE -ne 0) {
@@ -116,12 +125,18 @@ if ($LASTEXITCODE -ne 0) {
 $setup = Get-ChildItem $releasesDir -Filter "*Setup*.exe" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
+$msi = Get-ChildItem $releasesDir -Filter "*.msi" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
 
 Write-Host ""
 Write-Host "Release packages ready:" -ForegroundColor Green
 Write-Host "  $releasesDir"
+if ($msi) {
+    Write-Host "  MSI (folder choice + launch checkbox): $($msi.FullName)"
+}
 if ($setup) {
-    Write-Host "  Installer: $($setup.FullName)"
+    Write-Host "  Setup.exe (one-click): $($setup.FullName)"
 }
 Write-Host ""
 

@@ -58,6 +58,10 @@ jobs:
           --packDir publish
           --mainExe SentientDesk.exe
           --packTitle SentientDesk
+          --packAuthors SentientDesk
+          --msi
+          --instLocation Either
+          --instConclusion installer/conclusion.md
           --outputDir Releases
 
       - name: Upload to GitHub Releases
