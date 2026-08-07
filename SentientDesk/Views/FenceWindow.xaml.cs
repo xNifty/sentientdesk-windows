@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using SentientDesk.Models;
 using SentientDesk.Native;
@@ -159,6 +160,42 @@ public partial class FenceWindow : Window
         {
             return ViewModel.Items.Count;
         }
+    }
+
+    /// <summary>
+    /// Folder icon under the cursor in this fence, if any (for drag-onto-folder).
+    /// </summary>
+    public DesktopItem? FindFolderIconAtCursor(DesktopItem? exclude = null)
+    {
+        if (!IsVisible)
+            return null;
+
+        try
+        {
+            if (!NativeMethods.GetCursorPos(out var pt))
+                return null;
+
+            var local = PointFromScreen(new Point(pt.X, pt.Y));
+            var hit = VisualTreeHelper.HitTest(this, local);
+            DependencyObject? current = hit?.VisualHit;
+            while (current is not null)
+            {
+                if (current is FrameworkElement { DataContext: DesktopItem folder } &&
+                    folder.IsDirectory &&
+                    (exclude is null || !folder.Id.Equals(exclude.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return folder;
+                }
+
+                current = VisualTreeHelper.GetParent(current);
+            }
+        }
+        catch
+        {
+            // Ignore hit-test failures across DPI / disposed visuals.
+        }
+
+        return null;
     }
 
     private void CommitUserBounds(bool includeSize)
@@ -513,6 +550,11 @@ public partial class FenceWindow : Window
         collapse.Click += (_, _) => ToggleCollapse();
         menu.Items.Add(collapse);
 
+        var newFolder = new MenuItem { Header = "New folder…" };
+        newFolder.Click += (_, _) =>
+            Dispatcher.BeginInvoke(PromptCreateFolder, DispatcherPriority.ApplicationIdle);
+        menu.Items.Add(newFolder);
+
         menu.Items.Add(new Separator());
 
         var colors = new (string Name, string Hex)[]
@@ -639,8 +681,16 @@ public partial class FenceWindow : Window
         if (wasDragging)
         {
             var target = _manager.FindFenceAtCursor() ?? this;
-            var index = target.InsertionIndexAtCursor();
-            _manager.MoveItem(item, ViewModel, target.ViewModel, index);
+            var folder = target.FindFolderIconAtCursor(exclude: item);
+            if (folder is not null)
+            {
+                _manager.MoveIntoFolder(item, folder);
+            }
+            else
+            {
+                var index = target.InsertionIndexAtCursor();
+                _manager.MoveItem(item, ViewModel, target.ViewModel, index);
+            }
 
             ReleaseInteraction();
             PushBehindApps();
@@ -758,6 +808,32 @@ public partial class FenceWindow : Window
 
         menu.Items.Add(new Separator());
 
+        var newFolderWithSelection = new MenuItem { Header = "New folder with selection…" };
+        newFolderWithSelection.Click += (_, _) =>
+            Dispatcher.BeginInvoke(() => PromptCreateFolderWithSelection(item), DispatcherPriority.ApplicationIdle);
+        menu.Items.Add(newFolderWithSelection);
+
+        var moveIntoRoot = new MenuItem { Header = "Move into" };
+        var folders = ViewModel.Items
+            .Where(i => i.IsDirectory && !i.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (folders.Count == 0)
+        {
+            moveIntoRoot.Items.Add(new MenuItem { Header = "(no folders in this fence)", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var folder in folders)
+            {
+                var target = folder;
+                var entry = new MenuItem { Header = target.DisplayName };
+                entry.Click += (_, _) => _manager.MoveIntoFolder(item, target);
+                moveIntoRoot.Items.Add(entry);
+            }
+        }
+        menu.Items.Add(moveIntoRoot);
+
         var moveRoot = new MenuItem { Header = "Move to" };
         foreach (var fence in _manager.Windows)
         {
@@ -782,6 +858,42 @@ public partial class FenceWindow : Window
         };
 
         menu.IsOpen = true;
+    }
+
+    private void PromptCreateFolder()
+    {
+        HoldInteraction();
+        try
+        {
+            var suggested = ShellFileOps.UniqueDesktopFolderName();
+            var name = RenamePrompt.Ask("New folder", "Folder name:", suggested);
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+            _manager.CreateFolderInFence(ViewModel, name.Trim());
+        }
+        finally
+        {
+            ReleaseInteraction();
+            PushBehindApps();
+        }
+    }
+
+    private void PromptCreateFolderWithSelection(DesktopItem item)
+    {
+        HoldInteraction();
+        try
+        {
+            var suggested = ShellFileOps.UniqueDesktopFolderName();
+            var name = RenamePrompt.Ask("New folder", "Folder name:", suggested);
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+            _manager.CreateFolderWithItems(ViewModel, name.Trim(), [item]);
+        }
+        finally
+        {
+            ReleaseInteraction();
+            PushBehindApps();
+        }
     }
 
     private void BeginItemRename(DesktopItem item)

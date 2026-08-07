@@ -70,15 +70,17 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 - **Start with Windows** writes a HKCU `Run` registry entry.
 - Exit from the tray menu restores desktop icons.
 
-## Features (v0.1)
+## Features (v0.3.1)
 
 | Feature | Support |
 |---------|---------|
 | Movable / resizable / collapsible / recolorable fences | Yes |
 | Desktop icons inside fences | User + Public Desktop (first-launch import; overlay thereafter) |
 | Drag icons between fences | Yes |
+| Drag icon onto folder | Moves the item into that Desktop folder |
 | Double-click icon to open | Yes |
-| Icon context menu | Open, Cut/Copy, Delete (remove from fence), Rename, Properties, Move to |
+| Icon context menu | Open, Cut/Copy, Delete (remove from fence), Rename, Properties, New folder with selection, Move into, Move to |
+| New folder in fence | Right-click fence title → New folder… |
 | Default fence for new icons | Right-click fence title → Set as default |
 | Hide native desktop icons | Explorer ListView (restored on Exit / uninstall) |
 | Start at login | HKCU Run |
@@ -111,8 +113,9 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 - With **Snap to grid** on, fences align to a 16px grid; a faint overlay appears while dragging. Hold **Alt** to place freely for that gesture
 - Double-click the title bar to collapse/expand
 - Double-click the title text to rename
-- Right-click the title bar for color / default fence / remove
-- Right-click an icon for Open, Cut/Copy, Delete (from fence), Rename, Properties, Move to
+- Right-click the title bar for New folder / color / default fence / remove
+- Right-click an icon for Open, Cut/Copy, Delete (from fence), Rename, Properties, New folder with selection, Move into, Move to
+- Drag an icon onto a folder icon to move it into that folder on disk
 - Delete key removes the selected icon from the fence (file stays on disk)
 
 ### Overlay model

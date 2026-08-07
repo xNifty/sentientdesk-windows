@@ -139,6 +139,149 @@ public static class ShellFileOps
         return name;
     }
 
+    /// <summary>
+    /// Suggests an unused folder name under the user Desktop (New folder, New folder (2), …).
+    /// </summary>
+    public static string UniqueDesktopFolderName(string preferred = "New folder")
+    {
+        preferred = string.IsNullOrWhiteSpace(preferred) ? "New folder" : preferred.Trim();
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var candidate = preferred;
+        var n = 2;
+        while (Directory.Exists(Path.Combine(desktop, candidate)) ||
+               File.Exists(Path.Combine(desktop, candidate)))
+        {
+            candidate = $"{preferred} ({n})";
+            n++;
+        }
+
+        return candidate;
+    }
+
+    /// <summary>
+    /// Creates a folder on the user Desktop. Returns the full path, or null on failure.
+    /// </summary>
+    public static string? TryCreateDesktopFolder(string name)
+    {
+        name = name.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            MessageBox.Show("The name contains invalid characters.", "SentientDesk",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+
+        try
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (string.IsNullOrEmpty(desktop) || !Directory.Exists(desktop))
+            {
+                MessageBox.Show("Could not find your Desktop folder.", "SentientDesk",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+
+            var path = Path.Combine(desktop, name);
+            if (File.Exists(path) || Directory.Exists(path))
+            {
+                MessageBox.Show($"A file or folder named '{name}' already exists.",
+                    "SentientDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+
+            Directory.CreateDirectory(path);
+            return path;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not create folder '{name}':\n{ex.Message}",
+                "SentientDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Moves a Desktop item into a Desktop folder (filesystem). Returns false on failure.
+    /// </summary>
+    public static bool TryMoveIntoFolder(DesktopItem item, DesktopItem folder)
+    {
+        if (!folder.IsDirectory)
+            return false;
+
+        if (item.Id.Equals(folder.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("Cannot move a folder into itself.", "SentientDesk",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        if (item.IsDirectory && IsDescendantPath(folder.Path, item.Path))
+        {
+            MessageBox.Show("Cannot move a folder into one of its subfolders.", "SentientDesk",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        try
+        {
+            if (!Directory.Exists(folder.Path))
+            {
+                MessageBox.Show($"Folder '{folder.DisplayName}' is no longer on disk.",
+                    "SentientDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (!File.Exists(item.Path) && !Directory.Exists(item.Path))
+            {
+                MessageBox.Show($"'{item.DisplayName}' is no longer on disk.",
+                    "SentientDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            var fileName = Path.GetFileName(item.Path);
+            var dest = Path.Combine(folder.Path, fileName);
+            if (File.Exists(dest) || Directory.Exists(dest))
+            {
+                MessageBox.Show($"'{fileName}' already exists inside '{folder.DisplayName}'.",
+                    "SentientDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (item.IsDirectory)
+                Directory.Move(item.Path, dest);
+            else
+                File.Move(item.Path, dest);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not move '{item.DisplayName}' into '{folder.DisplayName}':\n{ex.Message}",
+                "SentientDesk", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="candidate"/> is inside <paramref name="ancestor"/> (or equal).
+    /// </summary>
+    private static bool IsDescendantPath(string candidate, string ancestor)
+    {
+        var cand = Path.GetFullPath(candidate)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var anc = Path.GetFullPath(ancestor)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (cand.Equals(anc, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var prefix = anc + Path.DirectorySeparatorChar;
+        return cand.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void SetClipboard(DesktopItem item, bool cut)
     {
         try

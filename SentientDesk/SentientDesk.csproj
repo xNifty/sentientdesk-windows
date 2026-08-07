@@ -9,7 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>SentientDesk</RootNamespace>
     <AssemblyName>SentientDesk</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.3.1</Version>
     <Product>SentientDesk</Product>
     <Description>Free desktop icon organizer for Windows — group desktop icons into movable fences you can own and extend.</Description>
     <StartupObject>SentientDesk.Program</StartupObject>

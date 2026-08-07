@@ -218,6 +218,89 @@ public sealed class FenceManager : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Creates a folder on the user Desktop and places it in <paramref name="fence"/>.
+    /// Returns the new item, or null on cancel/failure.
+    /// </summary>
+    public DesktopItem? CreateFolderInFence(FenceViewModel fence, string name)
+    {
+        var path = ShellFileOps.TryCreateDesktopFolder(name);
+        if (path is null)
+            return null;
+
+        _layout.ItemFenceMap[path] = fence.Id;
+        ClearHidden(path);
+        _icons.Refresh();
+
+        var item = _icons.Items.FirstOrDefault(i => i.Id.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (item is null)
+            return null;
+
+        PlaceItemInFence(item, fence);
+        Persist();
+        return item;
+    }
+
+    /// <summary>
+    /// Creates a Desktop folder in <paramref name="fence"/> and moves <paramref name="items"/> into it.
+    /// </summary>
+    public DesktopItem? CreateFolderWithItems(FenceViewModel fence, string name, IReadOnlyList<DesktopItem> items)
+    {
+        var folderItem = CreateFolderInFence(fence, name);
+        if (folderItem is null)
+            return null;
+
+        var movedAny = false;
+        foreach (var item in items)
+        {
+            if (item.Id.Equals(folderItem.Id, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (ShellFileOps.TryMoveIntoFolder(item, folderItem))
+                movedAny = true;
+        }
+
+        if (movedAny)
+            _icons.Refresh();
+
+        return folderItem;
+    }
+
+    /// <summary>
+    /// Moves a Desktop item into a folder on disk; fences update via icon refresh.
+    /// </summary>
+    public bool MoveIntoFolder(DesktopItem item, DesktopItem folder)
+    {
+        if (!ShellFileOps.TryMoveIntoFolder(item, folder))
+            return false;
+
+        _layout.ItemFenceMap.Remove(item.Id);
+        _icons.Refresh();
+        return true;
+    }
+
+    private void PlaceItemInFence(DesktopItem item, FenceViewModel fence)
+    {
+        foreach (var window in _windows)
+        {
+            var list = window.ViewModel.Items;
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                if (list[i].Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase) &&
+                    !ReferenceEquals(window.ViewModel, fence))
+                    list.RemoveAt(i);
+            }
+        }
+
+        if (fence.Items.All(x => !x.Id.Equals(item.Id, StringComparison.OrdinalIgnoreCase)))
+            fence.Items.Add(item);
+
+        _layout.ItemFenceMap[item.Id] = fence.Id;
+        ClearHidden(item.Id);
+
+        foreach (var window in _windows)
+            window.LockSizeToViewModel();
+    }
+
     public void SetHideDesktopIcons(bool hide)
     {
         _layout.HideDesktopIcons = hide;
