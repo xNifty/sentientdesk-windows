@@ -1,10 +1,13 @@
 <#
 .SYNOPSIS
-  Publishes SentientDesk (self-contained win-x64) and packs a Velopack release.
+  Publishes SentientDesk (self-contained win-x64), builds a portable zip, and packs a Velopack release.
 
 .DESCRIPTION
   Requires .NET 8 SDK and the Velopack CLI (vpk). Installs vpk globally if missing.
-  Output: artifacts\releases\ (Setup.exe, .msi, nupkg, releases.*.json, etc.)
+  Outputs:
+    artifacts\portable\SentientDesk-Portable-<version>.zip
+    artifacts\releases\ (Setup.exe, .msi, nupkg, releases.*.json, etc.)
+  -Upload also attaches the portable zip via gh after vpk upload (needs gh + token).
 
 .EXAMPLE
   .\scripts\New-Release.ps1
@@ -39,6 +42,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 $publishDir = Join-Path $repoRoot "artifacts\publish"
 $releasesDir = Join-Path $repoRoot "artifacts\releases"
+$portableDir = Join-Path $repoRoot "artifacts\portable"
 
 Write-Host "==> Publishing SentientDesk $Version (win-x64 self-contained)" -ForegroundColor Cyan
 
@@ -47,6 +51,7 @@ if (Test-Path $publishDir) {
 }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 New-Item -ItemType Directory -Path $releasesDir -Force | Out-Null
+New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
 
 dotnet publish $csproj `
     -c Release `
@@ -63,6 +68,26 @@ if ($LASTEXITCODE -ne 0) {
 $exe = Join-Path $publishDir "SentientDesk.exe"
 if (-not (Test-Path $exe)) {
     throw "Publish succeeded but SentientDesk.exe was not found in $publishDir"
+}
+
+Write-Host "==> Creating portable zip" -ForegroundColor Cyan
+
+$portableZip = Join-Path $portableDir "SentientDesk-Portable-$Version.zip"
+$portableBundle = Join-Path $portableDir "SentientDesk"
+if (Test-Path $portableZip) {
+    Remove-Item $portableZip -Force
+}
+if (Test-Path $portableBundle) {
+    Remove-Item $portableBundle -Recurse -Force
+}
+
+New-Item -ItemType Directory -Path $portableBundle -Force | Out-Null
+Copy-Item -Path (Join-Path $publishDir "*") -Destination $portableBundle -Recurse -Force
+Compress-Archive -Path $portableBundle -DestinationPath $portableZip -CompressionLevel Optimal
+Remove-Item $portableBundle -Recurse -Force
+
+if (-not (Test-Path $portableZip)) {
+    throw "Portable zip was not created: $portableZip"
 }
 
 function Ensure-Vpk {
@@ -131,7 +156,8 @@ $msi = Get-ChildItem $releasesDir -Filter "*.msi" -ErrorAction SilentlyContinue 
 
 Write-Host ""
 Write-Host "Release packages ready:" -ForegroundColor Green
-Write-Host "  $releasesDir"
+Write-Host "  Portable:  $portableZip"
+Write-Host "  Velopack:  $releasesDir"
 if ($msi) {
     Write-Host "  MSI (folder choice + launch checkbox): $($msi.FullName)"
 }
@@ -141,7 +167,7 @@ if ($setup) {
 Write-Host ""
 
 if ($Upload) {
-    Write-Host "==> Uploading to GitHub Releases" -ForegroundColor Cyan
+    Write-Host "==> Uploading Velopack assets to GitHub Releases" -ForegroundColor Cyan
     $tag = "v$Version"
     $uploadArgs = @(
         "upload", "github",
@@ -159,6 +185,19 @@ if ($Upload) {
         throw "vpk upload failed with exit code $LASTEXITCODE"
     }
     Write-Host "Published GitHub release $tag" -ForegroundColor Green
+
+    Write-Host "==> Attaching portable zip to $tag" -ForegroundColor Cyan
+    if (-not (Get-Command "gh" -ErrorAction SilentlyContinue)) {
+        throw "gh CLI not found. Install GitHub CLI to attach the portable zip, or upload $portableZip manually."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) {
+        $env:GH_TOKEN = $GitHubToken
+    }
+    & gh release upload $tag $portableZip --clobber
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh release upload failed with exit code $LASTEXITCODE"
+    }
+    Write-Host "Attached portable zip to $tag" -ForegroundColor Green
 }
 else {
     Write-Host "Tip: push a v$Version tag to publish via GitHub Actions, or re-run with -Upload." -ForegroundColor DarkYellow
