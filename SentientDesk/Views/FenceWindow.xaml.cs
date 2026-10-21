@@ -272,7 +272,8 @@ public partial class FenceWindow : Window
         // Manual move — DragMove() can alter transparent window size on some DPI setups.
         _isMovingFence = true;
         _gestureHasMoved = false;
-        _moveStartCursor = PointToScreen(e.GetPosition(this));
+        // PointToScreen returns pixels; Left/Top are DIPs.
+        _moveStartCursor = MonitorPlacement.ToDip(PointToScreen(e.GetPosition(this)));
         _moveStartOrigin = new Point(Left, Top);
         HoldInteraction();
         CaptureMouse();
@@ -286,7 +287,7 @@ public partial class FenceWindow : Window
         if (!_isMovingFence || e.LeftButton != MouseButtonState.Pressed)
             return;
 
-        var cursor = PointToScreen(e.GetPosition(this));
+        var cursor = MonitorPlacement.ToDip(PointToScreen(e.GetPosition(this)));
         var dx = cursor.X - _moveStartCursor.X;
         var dy = cursor.Y - _moveStartCursor.Y;
         Left = _moveStartOrigin.X + dx;
@@ -594,7 +595,11 @@ public partial class FenceWindow : Window
 
         menu.Items.Add(new Separator());
 
-        var remove = new MenuItem { Header = "Remove fence" };
+        var remove = new MenuItem
+        {
+            Header = _manager.CanRemoveFence ? "Remove fence" : "Remove fence (last fence)",
+            IsEnabled = _manager.CanRemoveFence
+        };
         remove.Click += (_, _) =>
         {
             if (MessageBox.Show($"Remove fence \"{ViewModel.Title}\"? Icons move to another fence.",
@@ -789,13 +794,18 @@ public partial class FenceWindow : Window
 
         menu.Items.Add(new Separator());
 
-        var delete = new MenuItem { Header = "Delete" };
-        delete.Click += (_, _) =>
+        var removeFromFence = new MenuItem
+        {
+            Header = "Remove from fence",
+            InputGestureText = "Del",
+            ToolTip = "Hides the icon from SentientDesk; the file stays on disk. Restore via tray → Hidden icons."
+        };
+        removeFromFence.Click += (_, _) =>
         {
             _lastClickItem = null;
             _manager.RemoveItem(item, ViewModel);
         };
-        menu.Items.Add(delete);
+        menu.Items.Add(removeFromFence);
 
         var rename = new MenuItem { Header = "Rename" };
         rename.Click += (_, _) =>

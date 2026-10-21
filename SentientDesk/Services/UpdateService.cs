@@ -32,9 +32,10 @@ public sealed class UpdateService
         }
     }
 
-    public async Task DownloadAndApplyAsync(UpdateInfo update)
-    {
-        await _manager.DownloadUpdatesAsync(update).ConfigureAwait(false);
-        _manager.ApplyUpdatesAndRestart(update);
-    }
+    public Task DownloadAsync(UpdateInfo update) => _manager.DownloadUpdatesAsync(update);
+
+    /// <summary>
+    /// Exits the process immediately (OnExit does not run) and restarts into the new version.
+    /// </summary>
+    public void ApplyAndRestart(UpdateInfo update) => _manager.ApplyUpdatesAndRestart(update);
 }

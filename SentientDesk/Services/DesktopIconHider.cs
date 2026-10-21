@@ -12,13 +12,12 @@ public sealed class DesktopIconHider
 
     public bool IsHidden => _hidden;
 
+    /// <summary>
+    /// Always re-applies, even when <paramref name="hide"/> matches the cached state —
+    /// explorer may have restarted and recreated the ListView.
+    /// </summary>
     public void SetHidden(bool hide)
     {
-        if (hide == _hidden)
-        {
-            // Still apply — explorer may have restarted.
-        }
-
         var listView = FindDesktopListView();
         if (listView == IntPtr.Zero)
             return;

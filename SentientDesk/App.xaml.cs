@@ -20,6 +20,7 @@ public partial class App : Application
     private DesktopIconHider? _hider;
     private LayoutStore? _store;
     private HotkeyService? _hotkeys;
+    private ShellRestartWatcher? _shellWatcher;
     private UpdateService? _updates;
     private Mutex? _singleInstance;
     private bool _updateCheckInProgress;
@@ -38,6 +39,9 @@ public partial class App : Application
         _singleInstance = new Mutex(true, "SentientDesk.SingleInstance", out var created);
         if (!created)
         {
+            // We never owned this mutex, so OnExit must not try to release it.
+            _singleInstance.Dispose();
+            _singleInstance = null;
             MessageBox.Show("SentientDesk is already running.", "SentientDesk",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
@@ -51,6 +55,10 @@ public partial class App : Application
             args.Handled = true;
         };
 
+        // A crash off the UI thread skips OnExit — never leave the desktop without icons.
+        AppDomain.CurrentDomain.UnhandledException += (_, _) => DesktopIconHider.ForceShowDesktopIcons();
+        TaskScheduler.UnobservedTaskException += (_, args) => args.SetObserved();
+
         _store = new LayoutStore();
         _icons = new DesktopIconService();
         _hider = new DesktopIconHider();
@@ -60,6 +68,9 @@ public partial class App : Application
         _hotkeys = new HotkeyService();
         _hotkeys.HotkeyPressed += () => Dispatcher.BeginInvoke(() => _manager?.CreateFence(FenceTemplate.Blank));
 
+        _shellWatcher = new ShellRestartWatcher();
+        _shellWatcher.ShellRestarted += () => _manager?.ReapplyShellState();
+
         _updates = new UpdateService();
         CreateTrayIcon();
         _ = CheckForUpdatesOnStartupAsync();
@@ -67,6 +78,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _shellWatcher?.Dispose();
         _hotkeys?.Dispose();
         _manager?.Dispose();
         if (_tray is not null)
@@ -124,6 +136,12 @@ public partial class App : Application
         startWithWindows.CheckedChanged += (_, _) => _manager?.SetStartWithWindows(startWithWindows.Checked);
         menu.Items.Add(startWithWindows);
 
+        var hiddenIcons = new ToolStripMenuItem("Hidden icons");
+        // Placeholder so the submenu arrow shows; real entries are built on open.
+        hiddenIcons.DropDownItems.Add(new ToolStripMenuItem("(none)") { Enabled = false });
+        hiddenIcons.DropDownOpening += (_, _) => PopulateHiddenIconsMenu(hiddenIcons);
+        menu.Items.Add(hiddenIcons);
+
         var refresh = new ToolStripMenuItem("Refresh icons");
         refresh.Click += (_, _) => _icons?.Refresh();
         menu.Items.Add(refresh);
@@ -173,6 +191,31 @@ public partial class App : Application
         };
 
         _tray.DoubleClick += (_, _) => _manager?.CreateFence(FenceTemplate.Blank);
+    }
+
+    private void PopulateHiddenIconsMenu(ToolStripMenuItem root)
+    {
+        root.DropDownItems.Clear();
+
+        var hidden = _manager?.HiddenItems() ?? [];
+        if (hidden.Count == 0)
+        {
+            root.DropDownItems.Add(new ToolStripMenuItem("(none)") { Enabled = false });
+            return;
+        }
+
+        var restoreAll = new ToolStripMenuItem($"Restore all ({hidden.Count})");
+        restoreAll.Click += (_, _) => _manager?.RestoreHiddenItems(hidden);
+        root.DropDownItems.Add(restoreAll);
+        root.DropDownItems.Add(new ToolStripSeparator());
+
+        foreach (var item in hidden)
+        {
+            var captured = item;
+            var entry = new ToolStripMenuItem(item.DisplayName) { ToolTipText = item.Path };
+            entry.Click += (_, _) => _manager?.RestoreHiddenItems([captured]);
+            root.DropDownItems.Add(entry);
+        }
     }
 
     private async Task CheckForUpdatesOnStartupAsync()
@@ -271,7 +314,17 @@ public partial class App : Application
                 _tray.ShowBalloonTip(3000, "Updating", "Downloading update…", ToolTipIcon.Info);
             }
 
-            await _updates.DownloadAndApplyAsync(update);
+            await _updates.DownloadAsync(update);
+
+            // ApplyUpdatesAndRestart exits the process without running OnExit:
+            // save layout and restore desktop icons first.
+            _shellWatcher?.Dispose();
+            _shellWatcher = null;
+            _hotkeys?.Dispose();
+            _hotkeys = null;
+            _manager?.Dispose();
+            _manager = null;
+            _updates.ApplyAndRestart(update);
         }
         catch (Exception ex)
         {

@@ -8,18 +8,32 @@ using SentientDesk.Native;
 
 namespace SentientDesk.Services;
 
-public sealed class DesktopIconService
+public sealed class DesktopIconService : IDisposable
 {
+    // Coalesces watcher bursts (a download or installer can fire dozens of events) into one rescan.
+    private static readonly TimeSpan RefreshDebounce = TimeSpan.FromMilliseconds(300);
+
     private readonly FileSystemWatcher _userWatcher;
     private readonly FileSystemWatcher _publicWatcher;
+    private readonly System.Windows.Threading.DispatcherTimer _refreshTimer;
     private List<DesktopItem> _items = [];
 
+    // Last-write time each item's icon was extracted at; unchanged items skip SHGetFileInfo.
+    private Dictionary<string, DateTime> _iconStamps = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Raised when the set of desktop items changes (added / removed / renamed).
+    /// Icon or name updates on existing items flow through <see cref="DesktopItem"/> property changes.
+    /// </summary>
     public event EventHandler? Changed;
 
     public DesktopIconService()
     {
         var userDesktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var publicDesktop = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
+
+        _refreshTimer = new System.Windows.Threading.DispatcherTimer { Interval = RefreshDebounce };
+        _refreshTimer.Tick += (_, _) => Refresh();
 
         _userWatcher = CreateWatcher(userDesktop);
         _publicWatcher = CreateWatcher(publicDesktop);
@@ -28,43 +42,96 @@ public sealed class DesktopIconService
 
     public IReadOnlyList<DesktopItem> Items => _items;
 
+    /// <summary>
+    /// Rescans the Desktop folders synchronously. Existing <see cref="DesktopItem"/> instances are
+    /// reused by Id so fences holding them stay in sync, and icons are re-extracted only for new
+    /// or modified entries.
+    /// </summary>
     public void Refresh()
     {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _refreshTimer.Stop();
+
+        var existing = new Dictionary<string, DesktopItem>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in _items)
+            existing.TryAdd(item.Id, item);
+
+        var stamps = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         var result = new List<DesktopItem>();
+        var membershipChanged = false;
 
         foreach (var folder in GetDesktopFolders())
         {
             if (!Directory.Exists(folder))
                 continue;
 
-            foreach (var path in Directory.EnumerateFileSystemEntries(folder))
+            IEnumerable<FileSystemInfo> entries;
+            try
             {
-                var name = Path.GetFileName(path);
+                entries = new DirectoryInfo(folder).EnumerateFileSystemInfos();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var entry in entries)
+            {
+                var path = entry.FullName;
+                var name = entry.Name;
                 if (string.IsNullOrWhiteSpace(name) || name.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (!paths.Add(path))
+                if (stamps.ContainsKey(path))
                     continue;
 
-                result.Add(new DesktopItem
+                var isDirectory = (entry.Attributes & FileAttributes.Directory) != 0;
+                var lastWrite = entry.LastWriteTimeUtc;
+                stamps[path] = lastWrite;
+
+                var displayName = ShellFileOps.DisplayNameForPath(path, isDirectory);
+                var iconStale = !_iconStamps.TryGetValue(path, out var oldStamp) || oldStamp != lastWrite;
+
+                if (existing.Remove(path, out var item))
                 {
-                    Id = path,
-                    Path = path,
-                    DisplayName = Path.GetFileNameWithoutExtension(name) is { Length: > 0 } stem &&
-                                  (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) ||
-                                   path.EndsWith(".url", StringComparison.OrdinalIgnoreCase))
-                        ? stem
-                        : name,
-                    IsDirectory = Directory.Exists(path),
-                    Icon = ExtractIcon(path, Directory.Exists(path))
-                });
+                    item.Path = path;
+                    item.DisplayName = displayName;
+                    item.IsDirectory = isDirectory;
+                    if (iconStale || item.Icon is null)
+                        item.Icon = ExtractIcon(path, isDirectory);
+                }
+                else
+                {
+                    membershipChanged = true;
+                    item = new DesktopItem
+                    {
+                        Id = path,
+                        Path = path,
+                        DisplayName = displayName,
+                        IsDirectory = isDirectory,
+                        Icon = ExtractIcon(path, isDirectory)
+                    };
+                }
+
+                result.Add(item);
             }
         }
 
+        // Anything left in `existing` disappeared from disk.
+        if (existing.Count > 0)
+            membershipChanged = true;
+
         result.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
         _items = result;
-        Changed?.Invoke(this, EventArgs.Empty);
+        _iconStamps = stamps;
+
+        if (membershipChanged)
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ScheduleRefresh()
+    {
+        _refreshTimer.Stop();
+        _refreshTimer.Start();
     }
 
     public static void Launch(DesktopItem item)
@@ -89,6 +156,7 @@ public sealed class DesktopIconService
 
     public void Dispose()
     {
+        _refreshTimer.Stop();
         _userWatcher.Dispose();
         _publicWatcher.Dispose();
     }
@@ -102,13 +170,16 @@ public sealed class DesktopIconService
             EnableRaisingEvents = Directory.Exists(path)
         };
 
+        // Watcher events arrive on thread-pool threads; the timer lives on the UI dispatcher.
         void OnChange(object _, FileSystemEventArgs __) =>
-            Application.Current?.Dispatcher.BeginInvoke(Refresh);
+            Application.Current?.Dispatcher.BeginInvoke(ScheduleRefresh);
 
         watcher.Created += OnChange;
         watcher.Deleted += OnChange;
         watcher.Renamed += OnChange;
         watcher.Changed += OnChange;
+        // Buffer overflow drops events — a full rescan recovers whatever was missed.
+        watcher.Error += (_, _) => Application.Current?.Dispatcher.BeginInvoke(ScheduleRefresh);
         return watcher;
     }
 

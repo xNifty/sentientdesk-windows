@@ -18,7 +18,10 @@ public sealed class DesktopLayerService : IDisposable
     private readonly HashSet<IntPtr> _fences = [];
     private readonly NativeMethods.WinEventDelegate _winEventProc;
     private readonly object _gate = new();
-    private IntPtr _hook;
+    private const int ObjIdWindow = 0;
+
+    private IntPtr _foregroundHook;
+    private IntPtr _minimizeEndHook;
     private bool _disposed;
     private bool _sinking;
     private int _interactionDepth;
@@ -26,14 +29,10 @@ public sealed class DesktopLayerService : IDisposable
     public DesktopLayerService()
     {
         _winEventProc = OnWinEvent;
-        _hook = NativeMethods.SetWinEventHook(
-            EventSystemForeground,
-            EventSystemMinimizeEnd,
-            IntPtr.Zero,
-            _winEventProc,
-            0,
-            0,
-            WinEventOutOfContext | WinEventSkipOwnProcess);
+        // Two single-event hooks rather than the 0x03–0x17 range, which would also deliver
+        // menu, capture, move/size, dialog and scroll events and re-sink every fence on each.
+        _foregroundHook = HookSingle(EventSystemForeground);
+        _minimizeEndHook = HookSingle(EventSystemMinimizeEnd);
     }
 
     public bool IsInteracting
@@ -153,11 +152,8 @@ public sealed class DesktopLayerService : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        if (_hook != IntPtr.Zero)
-        {
-            NativeMethods.UnhookWinEvent(_hook);
-            _hook = IntPtr.Zero;
-        }
+        Unhook(ref _foregroundHook);
+        Unhook(ref _minimizeEndHook);
 
         lock (_gate)
         {
@@ -175,7 +171,7 @@ public sealed class DesktopLayerService : IDisposable
         uint dwEventThread,
         uint dwmsEventTime)
     {
-        if (hwnd == IntPtr.Zero || IsInteracting)
+        if (hwnd == IntPtr.Zero || idObject != ObjIdWindow || IsInteracting)
             return;
 
         bool isOurs;
@@ -184,6 +180,24 @@ public sealed class DesktopLayerService : IDisposable
 
         if (!isOurs)
             SinkAll();
+    }
+
+    private IntPtr HookSingle(uint eventType) =>
+        NativeMethods.SetWinEventHook(
+            eventType,
+            eventType,
+            IntPtr.Zero,
+            _winEventProc,
+            0,
+            0,
+            WinEventOutOfContext | WinEventSkipOwnProcess);
+
+    private static void Unhook(ref IntPtr hook)
+    {
+        if (hook == IntPtr.Zero)
+            return;
+        NativeMethods.UnhookWinEvent(hook);
+        hook = IntPtr.Zero;
     }
 
     private static void ApplyBaseStyles(IntPtr hwnd)

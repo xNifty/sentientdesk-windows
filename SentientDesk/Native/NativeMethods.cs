@@ -51,6 +51,10 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
+    /// <summary>Windows 10 1607+.</summary>
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForSystem();
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);

@@ -95,8 +95,17 @@ public sealed class FenceManager : IDisposable
         !string.IsNullOrWhiteSpace(_layout.DefaultFenceId) &&
         window.ViewModel.Id.Equals(_layout.DefaultFenceId, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The last fence cannot be removed: with desktop icons hidden its items would have
+    /// nowhere to show, and the layout store refuses to persist an empty fence list.
+    /// </summary>
+    public bool CanRemoveFence => _windows.Count > 1;
+
     public void RemoveFence(FenceWindow window)
     {
+        if (!CanRemoveFence)
+            return;
+
         var orphanIds = window.ViewModel.Items.Select(i => i.Id).ToList();
         var removedId = window.ViewModel.Id;
         window.ViewModel.Items.Clear();
@@ -147,6 +156,29 @@ public sealed class FenceManager : IDisposable
 
         foreach (var window in _windows)
             window.LockSizeToViewModel();
+        Persist();
+    }
+
+    /// <summary>
+    /// Desktop items removed from fences that still exist on disk.
+    /// </summary>
+    public IReadOnlyList<DesktopItem> HiddenItems()
+    {
+        var hidden = HiddenSet();
+        return _icons.Items.Where(i => hidden.Contains(i.Id)).ToList();
+    }
+
+    /// <summary>
+    /// Puts previously removed icons back into the default fence.
+    /// </summary>
+    public void RestoreHiddenItems(IEnumerable<DesktopItem> items)
+    {
+        var target = ResolveDefaultViewModel();
+        if (target is null)
+            return;
+
+        foreach (var item in items)
+            PlaceItemInFence(item, target);
         Persist();
     }
 
@@ -306,6 +338,18 @@ public sealed class FenceManager : IDisposable
         _layout.HideDesktopIcons = hide;
         _hider.SetHidden(hide);
         Persist();
+    }
+
+    /// <summary>
+    /// explorer.exe recreates the desktop ListView (visible) and may restack windows on restart.
+    /// </summary>
+    public void ReapplyShellState()
+    {
+        if (_disposed)
+            return;
+
+        _hider.SetHidden(_layout.HideDesktopIcons);
+        _desktopLayer.SinkAll();
     }
 
     public void SetStartWithWindows(bool enabled)

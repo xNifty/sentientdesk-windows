@@ -68,7 +68,7 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 
 - **Hide desktop icons** toggles the Explorer desktop ListView (`SysListView32`).
 - **Start with Windows** writes a HKCU `Run` registry entry.
-- Exit from the tray menu restores desktop icons.
+- Exit from the tray menu restores desktop icons. They are also restored on a crash or update restart, and re-hidden automatically if Explorer restarts.
 
 ## Features (v0.3.1)
 
@@ -79,7 +79,7 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 | Drag icons between fences | Yes |
 | Drag icon onto folder | Moves the item into that Desktop folder |
 | Double-click icon to open | Yes |
-| Icon context menu | Open, Cut/Copy, Delete (remove from fence), Rename, Properties, New folder with selection, Move into, Move to |
+| Icon context menu | Open, Cut/Copy, Remove from fence, Rename, Properties, New folder with selection, Move into, Move to |
 | New folder in fence | Right-click fence title → New folder… |
 | Default fence for new icons | Right-click fence title → Set as default |
 | Hide native desktop icons | Explorer ListView (restored on Exit / uninstall) |
@@ -101,6 +101,7 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 | Hide desktop icons | Toggles native desktop icons |
 | Snap to grid | Quantize fence move/resize to a 16px grid (off = free placement) |
 | Start with Windows | Launch at login |
+| Hidden icons | Restore icons you removed from fences (individually or all) |
 | Refresh icons | Rescans Desktop folders |
 | Open layout folder | Opens the settings folder |
 | Check for updates… | Checks GitHub Releases for a newer build |
@@ -114,9 +115,9 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 - Double-click the title bar to collapse/expand
 - Double-click the title text to rename
 - Right-click the title bar for New folder / color / default fence / remove
-- Right-click an icon for Open, Cut/Copy, Delete (from fence), Rename, Properties, New folder with selection, Move into, Move to
+- Right-click an icon for Open, Cut/Copy, Remove from fence, Rename, Properties, New folder with selection, Move into, Move to
 - Drag an icon onto a folder icon to move it into that folder on disk
-- Delete key removes the selected icon from the fence (file stays on disk)
+- Delete key removes the selected icon from the fence (file stays on disk); restore it from tray → **Hidden icons**
 
 ### Overlay model
 

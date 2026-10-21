@@ -6,12 +6,40 @@ namespace SentientDesk.Services;
 
 /// <summary>
 /// Multi-monitor placement helpers using virtual-desktop coordinates.
+/// All public inputs/outputs are WPF device-independent units (DIPs), matching
+/// <see cref="Window.Left"/>/<see cref="Window.Top"/>. Win32 / WinForms values
+/// (<see cref="WinForms.Screen"/>, GetCursorPos, PointToScreen) are physical pixels
+/// and must go through <see cref="ToDip(Point)"/>.
 /// </summary>
 internal static class MonitorPlacement
 {
     private const double MinVisiblePx = 40;
     private const double DefaultCascade = 80;
     private const double CascadeStep = 28;
+
+    // WPF runs system-DPI-aware (no per-monitor manifest), so every Win32 coordinate in
+    // this process is scaled by the single system DPI, fixed for the process lifetime.
+    private static readonly Lazy<double> DipPerPixel = new(() =>
+    {
+        try
+        {
+            var dpi = NativeMethods.GetDpiForSystem();
+            return dpi > 0 ? 96.0 / dpi : 1.0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return 1.0;
+        }
+    });
+
+    public static Point ToDip(Point pixels) =>
+        new(pixels.X * DipPerPixel.Value, pixels.Y * DipPerPixel.Value);
+
+    /// <summary>
+    /// Current cursor position in DIPs, or null if it cannot be read.
+    /// </summary>
+    public static Point? CursorDip() =>
+        NativeMethods.GetCursorPos(out var pt) ? ToDip(new Point(pt.X, pt.Y)) : null;
 
     /// <summary>
     /// Cap absurd sizes from corrupt layouts against the full virtual desktop.
@@ -149,25 +177,29 @@ internal static class MonitorPlacement
             SystemParameters.VirtualScreenHeight);
     }
 
-    private static Rect? WorkAreaUnderCursor()
-    {
-        if (!NativeMethods.GetCursorPos(out var pt))
-            return null;
-
-        return WorkAreaContaining(new Point(pt.X, pt.Y));
-    }
+    private static Rect? WorkAreaUnderCursor() =>
+        CursorDip() is { } cursor ? WorkAreaContaining(cursor) : null;
 
     private static Rect? WorkAreaContaining(Point point)
     {
         foreach (var screen in WinForms.Screen.AllScreens)
         {
-            if (screen.Bounds.Contains((int)point.X, (int)point.Y))
+            var bounds = ToRect(screen.Bounds);
+            // Half-open on the right/bottom so a shared monitor edge belongs to one screen.
+            if (point.X >= bounds.Left && point.X < bounds.Right &&
+                point.Y >= bounds.Top && point.Y < bounds.Bottom)
                 return ToRect(screen.WorkingArea);
         }
 
         return null;
     }
 
-    private static Rect ToRect(System.Drawing.Rectangle r) =>
-        new(r.X, r.Y, r.Width, r.Height);
+    /// <summary>
+    /// Pixel rectangle (WinForms / Win32) to DIPs.
+    /// </summary>
+    private static Rect ToRect(System.Drawing.Rectangle r)
+    {
+        var scale = DipPerPixel.Value;
+        return new Rect(r.X * scale, r.Y * scale, r.Width * scale, r.Height * scale);
+    }
 }
