@@ -73,7 +73,7 @@ If you previously installed via the old Inno Setup build (Program Files), uninst
 - **Start with Windows** writes a HKCU `Run` registry entry.
 - Exit from the tray menu restores desktop icons. They are also restored on a crash or update restart, and re-hidden automatically if Explorer restarts.
 
-## Features (v0.3.1)
+## Features (v0.4.0)
 
 | Feature | Support |
 |---------|---------|
