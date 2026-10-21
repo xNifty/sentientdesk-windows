@@ -29,14 +29,15 @@ The app is packaged with [Velopack](https://velopack.io/). Auto-updates check [G
 
 The publish is **self-contained win-x64**, so end users do not need the .NET runtime.
 
-### Which installer to use
+### Which package to use
 
 | Asset | Behavior |
 |-------|----------|
-| **`.msi` (recommended)** | Wizard: choose per-user (`%LocalAppData%`) or Program Files / a custom folder. Finish screen has a **Launch SentientDesk** checkbox (checked by default; uncheck to skip). |
-| **`Setup.exe`** | One-click install to `%LocalAppData%\SentientDesk` and launches immediately (no folder picker). |
+| **`.msi` (recommended)** | Wizard: choose per-user (`%LocalAppData%`) or Program Files / a custom folder. Finish screen has a **Launch SentientDesk** checkbox (checked by default; uncheck to skip). Auto-updates enabled. |
+| **`Setup.exe`** | One-click install to `%LocalAppData%\SentientDesk` and launches immediately (no folder picker). Auto-updates enabled. |
+| **`SentientDesk-Portable-<version>.zip`** | Unzip anywhere and run `SentientDesk\SentientDesk.exe` — no install, no admin. **Start with Windows** works from the tray. **No auto-updates** (re-download the zip for a new version, or switch to `.msi` / `Setup.exe`). |
 
-Auto-updates work the same for both install methods.
+Auto-updates work the same for both installer methods. Portable builds skip update checks (`Check for updates…` explains that an official installer is required).
 
 ### Local pack
 
@@ -46,7 +47,9 @@ Auto-updates work the same for both install methods.
 # optional: .\scripts\New-Release.ps1 -Upload   # needs GITHUB_TOKEN or gh auth
 ```
 
-Output: `artifacts\releases\` (`.msi`, Setup.exe, nupkg, release metadata).
+Outputs:
+- `artifacts\portable\SentientDesk-Portable-<version>.zip`
+- `artifacts\releases\` (`.msi`, Setup.exe, nupkg, release metadata)
 
 ### Publish a release (CI)
 
@@ -58,7 +61,7 @@ git tag v0.1.1
 git push origin v0.1.1
 ```
 
-The [Release](.github/workflows/release.yml) workflow publishes a GitHub Release with Velopack assets (including the MSI). Installed clients pick up the update via **Check for updates…** (also checked quietly on startup).
+The [Release](.github/workflows/release.yml) workflow publishes a GitHub Release with Velopack assets (including the MSI) plus the portable zip. Installed clients pick up the update via **Check for updates…** (also checked quietly on startup).
 
 Windows SmartScreen will warn on unsigned hobby builds — that is expected. Layout data under `%AppData%\SentientDesk` is left in place on uninstall. Uninstall restores the native desktop icon ListView and clears the “Start with Windows” Run entry.
 

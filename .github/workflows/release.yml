@@ -39,6 +39,20 @@ jobs:
           -p:Version=${{ steps.version.outputs.version }}
           -o publish
 
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $zipName = "SentientDesk-Portable-$version.zip"
+          $bundle = Join-Path $env:RUNNER_TEMP "SentientDesk"
+          if (Test-Path $bundle) { Remove-Item $bundle -Recurse -Force }
+          New-Item -ItemType Directory -Path $bundle -Force | Out-Null
+          Copy-Item -Path "publish\*" -Destination $bundle -Recurse -Force
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path $bundle -DestinationPath $zipName -CompressionLevel Optimal
+          Remove-Item $bundle -Recurse -Force
+          if (-not (Test-Path $zipName)) { throw "Portable zip was not created: $zipName" }
+
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version 1.2.0
 
@@ -73,3 +87,11 @@ jobs:
           --publish
           --releaseName "SentientDesk ${{ steps.version.outputs.version }}"
           --tag ${{ steps.version.outputs.tag }}
+
+      - name: Attach portable zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release upload ${{ steps.version.outputs.tag }}
+          SentientDesk-Portable-${{ steps.version.outputs.version }}.zip
+          --clobber
